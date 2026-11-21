@@ -1,0 +1,921 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Edeka Fuhrpark – Kundennummern Lern-App</title>
+
+<style>
+:root { --bg:#0f172a; --card:#1e293b; --accent:#3b82f6; --ok:#22c55e; --warn:#f59e0b; --red:#ef4444; --text:#e2e8f0; --muted:#94a3b8; --border:#334155; }
+* { box-sizing: border-box; }
+body { margin:0; font-family:system-ui,sans-serif; background:var(--bg); color:var(--text); line-height:1.5; }
+header { padding:1rem 1.5rem; background:#1e293b; border-bottom:1px solid var(--border); display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:1rem; }
+h1 { margin:0; font-size:1.5rem; }
+.container { max-width:1200px; margin:0 auto; padding:1rem; }
+.tabs { display:flex; gap:.5rem; flex-wrap:wrap; margin-bottom:1.5rem; }
+.tab { padding:.6rem 1.2rem; background:#334155; border:none; border-radius:8px; color:#fff; cursor:pointer; font-weight:500; }
+.tab.active { background:var(--accent); }
+.card { background:var(--card); border-radius:12px; padding:1.5rem; margin-bottom:1rem; box-shadow:0 4px 12px rgba(0,0,0,.4); }
+.big { font-size:3rem; font-weight:800; text-align:center; margin:1rem 0; letter-spacing:3px; color:var(--accent); }
+.btns { display:flex; gap:.5rem; justify-content:center; flex-wrap:wrap; margin:1rem 0; }
+button, .btn { padding:.7rem 1.4rem; border:none; border-radius:8px; cursor:pointer; font-weight:600; background:var(--accent); color:#fff; }
+button:hover { opacity:.9; }
+.btn-ok { background:var(--ok); color:#000; }
+.btn-red { background:var(--red); }
+.btn-secondary { background:#475569; }
+.progress { height:8px; background:#334155; border-radius:4px; margin:1rem 0; overflow:hidden; }
+.progress>div { height:100%; background:var(--accent); transition:width .3s; }
+.stats { display:flex; justify-content:space-around; margin:1rem 0; }
+.cluster-group { margin-bottom:2rem; border-left:4px solid var(--accent); padding-left:1rem; }
+.cluster-group.red { border-left-color:var(--red); }
+.item { background:#334155; padding:.5rem .8rem; border-radius:8px; margin:.3rem; display:inline-block; font-size:.9rem; }
+.item.red { background:#7f1d1d; border:1px solid var(--red); }
+input, select, textarea { width:100%; padding:.7rem; border-radius:8px; border:1px solid #475569; background:#1e293b; color:#fff; margin:.4rem 0; }
+label { font-size:.85rem; color:var(--muted); display:block; margin-top:.8rem; }
+table { width:100%; border-collapse:collapse; font-size:.85rem; }
+th, td { padding:.5rem; text-align:left; border-bottom:1px solid var(--border); }
+.red-row { background:rgba(239,68,68,.15); }
+.hidden { display:none; }
+#map { height:500px; border-radius:12px; margin:1rem 0; }
+.google-btn { background:#34a853; font-size:.85rem; padding:.4rem .8rem; text-decoration:none; color:#fff; }
+.search-bar { margin-bottom:1rem; }
+.legend { font-size:.85rem; color:var(--muted); padding:1rem; background:#0f172a; border-radius:8px; margin-top:1rem; }
+</style>
+</head>
+<body>
+<header>
+  <h1>🚚 Edeka Fuhrpark – Kundennummern Lern-App (Rheinland)</h1>
+  <div style="display:flex;gap:1rem;align-items:center;flex-wrap:wrap;">
+    <span id="progress-display" style="font-size:.9rem;color:var(--muted);">Fortschritt: –</span>
+    <input type="text" id="global-search" placeholder="Nummer oder Name suchen..." style="min-width:280px;padding:.6rem 1rem;border-radius:8px;border:1px solid #475569;background:#1e293b;color:#fff;">
+    <button class="btn-secondary" onclick="exportData()">Export JSON</button>
+    <button class="btn-secondary" onclick="exportCSV()">Export CSV (mit Adresse)</button>
+    <button class="btn-secondary" onclick="document.getElementById('import-file').click()">Import JSON</button>
+    <input type="file" id="import-file" accept=".json" style="display:none" onchange="importData(event)">
+  </div>
+</header>
+<div id="global-results" style="max-width:1200px;margin:0 auto;padding:0 1rem;display:none;"></div>
+<div class="container">
+  <div class="tabs">
+                    <button class="tab active" data-mode="staedte">Städte</button>
+    <button class="tab" data-mode="stadt-lernen">Städte lernen</button>
+    <button class="tab" data-mode="gebiet-lernen">Gebiete lernen</button>
+    <button class="tab" data-mode="touren">Kleine Touren</button>
+    <button class="tab" data-mode="touren-lernen">Kleine Touren lernen</button>
+    <button class="tab" data-mode="rot">Rote Gebiete / Besonderheiten</button>
+    <button class="tab" data-mode="karte">Karte</button>
+    <button class="tab" data-mode="analyse">Analyse & Visualisierung</button>
+    <button class="tab" data-mode="verwalten">Stammdaten ändern</button>
+  </div>
+
+  <div id="flash" class="mode">
+    <div class="card">
+      <div class="big" id="flash-num">—</div>
+      <div id="flash-details" style="text-align:center;font-size:1.1rem;margin:1rem 0;min-height:80px;"></div>
+      <div class="btns">
+        <button id="show-btn">Antwort zeigen</button>
+        <button class="btn-ok" id="next-btn">Nächste</button>
+        <a class="btn google-btn" id="flash-google" href="#" target="_blank">Google Maps</a>
+      </div>
+    </div>
+    <div class="progress"><div id="flash-prog" style="width:0%"></div></div>
+  </div>
+
+  <div id="quiz" class="mode hidden">
+    <div class="card">
+      <div class="big" id="quiz-num">—</div>
+      <p style="text-align:center">Welche Stadt / Cluster?</p>
+      <div class="btns" id="quiz-options"></div>
+      <div id="quiz-feedback" style="text-align:center;margin-top:1rem;font-weight:600;min-height:40px;"></div>
+      <a class="btn google-btn" id="quiz-google" href="#" target="_blank" style="display:none;">Google Maps</a>
+    </div>
+    <div class="stats">
+      <span>Richtig: <b id="correct">0</b></span>
+      <span>Falsch: <b id="wrong">0</b></span>
+      <span>Serie: <b id="streak">0</b></span>
+    </div>
+  </div>
+
+  <div id="segmentierung" class="mode hidden">
+    <div class="card">
+      <h3>Kunden-Segmentierung – Übersicht</h3>
+      <p><strong>Rheinseite:</strong> links (162) / rechts (103)</p>
+      <p><strong>Tags / Lieferart:</strong></p>
+      <ul>
+        <li><strong>alle</strong> – 193 Kunden (Standard)</li>
+        <li><strong>48er</strong> – 36 Kunden</li>
+        <li><strong>30er</strong> – 20 Kunden (besonders markiert)</li>
+        <li><strong>54er</strong> – 16 Kunden</li>
+      </ul>
+      <p><strong>Cluster-Kombinationen:</strong> Rheinseite + Tag (z.B. "links | 30er", "rechts | 48er")</p>
+      <p>Rampe: ohne Rampe (154) / mit Rampe (111)</p>
+      <div class="btns">
+        <button onclick="startSegmentQuiz()">Segment-Quiz starten</button>
+        <button class="btn-secondary" onclick="showSegmentOverview()">Übersicht aktualisieren</button>
+      </div>
+      <div id="segment-quiz" style="margin-top:1.5rem;"></div>
+      <div id="segment-overview"></div>
+    </div>
+  </div>
+
+  <div id="cluster" class="mode hidden">
+    <div class="search-bar"><input type="text" id="cluster-search" placeholder="Suchen..."></div>
+    <div id="cluster-list"></div>
+  </div>
+
+  <div id="stadt-lernen" class="mode hidden">
+    <div class="card">
+      <h3>Städte lernen</h3>
+      <p>Lerne Kundennummern und Namen zu Städten.</p>
+      <div class="btns">
+        <button onclick="startCityQuiz()">Stadt-Quiz starten</button>
+        <button class="btn-secondary" onclick="showCityFlash()">Flashcard Stadt</button>
+      </div>
+      <div id="city-learn-area" style="margin-top:1.5rem;"></div>
+    </div>
+  </div>
+
+  <div id="gebiet-lernen" class="mode hidden">
+    <div class="card" style="background:linear-gradient(135deg,#1e293b,#0f172a);">
+      <h2 style="margin-top:0;background:linear-gradient(90deg,#3b82f6,#a855f7);-webkit-background-clip:text;-webkit-text-fill-color:transparent;">Gebiete lernen</h2>
+      <p style="color:var(--muted)">Meistere Rheinseite + Tags (30er / 48er / 54er / alle) professionell.</p>
+      <div class="btns" style="margin:1.5rem 0;">
+        <button onclick="startAreaQuiz()" style="font-size:1.1rem;padding:1rem 2rem;">Quiz starten</button>
+        <button class="btn-secondary" onclick="showAreaCards()">Karten-Modus</button>
+        <button class="btn-secondary" onclick="showAreaOverview()">Übersicht</button>
+      </div>
+      <div id="area-learn-area" style="min-height:200px;"></div>
+    </div>
+  </div>
+
+  <div id="staedte" class="mode hidden">
+    <div class="search-bar"><input type="text" id="stadt-search" placeholder="Stadt suchen..."></div>
+    <div id="stadt-list"></div>
+  </div>
+
+  <div id="touren-lernen" class="mode hidden">
+    <div class="card">
+      <h3>Kleine Touren lernen</h3>
+      <p>Lerne, zu welcher Tour ein Kunde gehört (Aachen Tour, Bonn Tour, Köln Tour …).</p>
+      <div class="btns">
+        <button onclick="startTourQuiz()">Tour-Quiz starten</button>
+        <button class="btn-secondary" onclick="showTourCards()">Touren-Karten</button>
+      </div>
+      <div id="tour-learn-area" style="margin-top:1.5rem;"></div>
+    </div>
+  </div>
+
+  <div id="touren" class="mode hidden">
+    <div class="card">
+      <h3>Kleine logische Touren</h3>
+      <p>Unterteilt nach sinnvollen Gebieten (Aachen Tour, Bonn Tour, Köln Tour usw.)</p>
+      <button onclick="showSmallTours()">Touren anzeigen</button>
+      <div id="tour-output" style="margin-top:1.5rem;"></div>
+    </div>
+  </div>
+
+  <div id="rot" class="mode hidden">
+    <div class="card">
+      <h3 style="color:var(--red)">Rote Gebiete & Besonderheiten (30er, Notizen)</h3>
+      <div id="rot-list"></div>
+    </div>
+  </div>
+
+  <div id="karte" class="mode hidden">
+    <div class="card">
+      <h3>Karte – Alle Kunden (ohne externe Abhängigkeiten)</h3>
+      <p>Filter nach Tour oder Stadt. Klicke für Details + Google Maps.</p>
+      <input type="text" id="map-filter" placeholder="Tour, Stadt oder Nummer filtern..." style="margin-bottom:1rem;">
+      <div style="display:flex;gap:1rem;flex-wrap:wrap;">
+        <div id="landkarte" style="position:relative;flex:1;min-width:300px;height:600px;background:#1e293b;border-radius:12px;overflow:hidden;border:1px solid #334155;">
+          <div style="position:absolute;inset:0;background:linear-gradient(180deg,#0f172a 0%,#1e293b 100%);"></div>
+          <div id="map-markers" style="position:absolute;inset:0;"></div>
+          <div style="position:absolute;bottom:10px;left:10px;background:rgba(0,0,0,.7);padding:.5rem;border-radius:6px;font-size:.75rem;color:#94a3b8;">Rheinland • Hover für Info • Klick für Details</div>
+        </div>
+        <div id="map-detail" class="card" style="flex:1;min-width:280px;max-height:600px;overflow-y:auto;">
+          <h4>Kundendetails</h4>
+          <p style="color:var(--muted)">Klicke einen Marker auf der Karte.</p>
+        </div>
+      </div>
+      <div id="map-visual" style="display:none;"></div>
+    </div>
+    <div id="besonderheiten-list" class="card" style="margin-top:1rem;"></div>
+  </div>
+
+  <div id="analyse" class="mode hidden">
+    <div class="card">
+      <h3>Kunden-Analyse & Visualisierung</h3>
+      <div id="analyse-content"></div>
+    </div>
+  </div>
+
+  <div id="verwalten" class="mode hidden">
+    <div class="card">
+      <h3>Stammdaten jederzeit ändern</h3><p>Alle Kunden bearbeiten, löschen oder neue anlegen. Änderungen werden sofort gespeichert.</p>
+      <form id="customer-form">
+        <input type="hidden" id="edit-index">
+        <label>Kundennummer *</label><input type="text" id="f-id" required>
+        <label>Name</label><input type="text" id="f-name">
+        <label>Stadt *</label><input type="text" id="f-city" required>
+        <label>Cluster</label><input type="text" id="f-cluster">
+        <label>Adresse</label><input type="text" id="f-address">
+        <label>Rheinseite</label><select id="f-rhein"><option>links</option><option>rechts</option></select>
+        <label>Tags</label><input type="text" id="f-tags" placeholder="30er, 48er, 54er, alle">
+        <label>Rampe</label><input type="text" id="f-rampe">
+        <label><input type="checkbox" id="f-red"> Rot / Besonderheit</label>
+        <label>Notizen / Besonderheit</label><textarea id="f-notes" rows="2"></textarea>
+        <div class="btns">
+          <button type="submit" class="btn-ok">Speichern</button>
+          <button type="button" class="btn-secondary" onclick="resetForm()">Abbrechen</button>
+        </div>
+      </form>
+    </div>
+    <div class="card">
+      <h3>Alle Kunden (<span id="count">0</span>)</h3>
+      <div class="search-bar"><input type="text" id="manage-search" placeholder="Suchen (Nr, Name, Stadt...)"></div>
+      <div style="overflow-x:auto;"><table id="customer-table"><thead><tr><th>Nr.</th><th>Name</th><th>Stadt</th><th>Cluster</th><th>Tags</th><th>Rot</th><th>Aktionen</th></tr></thead><tbody></tbody></table></div>
+    </div>
+  </div>
+
+  <div class="legend">
+    <b>Daten aus echter Abladestellen-Liste (Rheinland).</b> Cluster nach Rheinseite + Tags (30er/48er/54er). Rote Einträge = Besonderheiten oder 30er. Google-Button öffnet die Adresse. Alles lokal speicherbar.
+  </div>
+</div>
+
+<script>
+const STORAGE_KEY = 'edeka_kunden_rheinland_v2';
+let customers = [];
+let flashIndex = 0;
+let quizCorrect = 0, quizWrong = 0, streak = 0;
+let map;
+
+function googleUrl(c) {
+  const q = c.address || `${c.name} ${c.city}`;
+  return `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(q)}`;
+}
+
+function loadData() {
+  const saved = localStorage.getItem(STORAGE_KEY);
+  if (saved) {
+    try { customers = JSON.parse(saved); } catch(e) { customers = [...INITIAL_CUSTOMERS]; }
+  } else {
+    customers = [...INITIAL_CUSTOMERS];
+    saveData();
+  }
+}
+function saveData() { localStorage.setItem(STORAGE_KEY, JSON.stringify(customers)); }
+
+// Tabs
+document.querySelectorAll('.tab').forEach(tab => {
+  tab.addEventListener('click', () => {
+    document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+    document.querySelectorAll('.mode').forEach(m => m.classList.add('hidden'));
+    tab.classList.add('active');
+    document.getElementById(tab.dataset.mode).classList.remove('hidden');
+    if (tab.dataset.mode === 'karte') { initMap(); showBesonderheiten(); }
+    if (tab.dataset.mode === 'cluster') renderClusters();
+    if (tab.dataset.mode === 'staedte') renderStaedte();
+    if (tab.dataset.mode === 'rot') renderRot();
+    if (tab.dataset.mode === 'verwalten') renderTable(); if (tab.dataset.mode === 'analyse') renderAnalyse();
+  });
+});
+
+// Flash
+function showFlash() {
+  if (!customers.length) return;
+  const c = customers[flashIndex % customers.length];
+  document.getElementById('flash-num').textContent = c.id;
+  document.getElementById('flash-details').innerHTML = '<i>Antwort zeigen</i>';
+  document.getElementById('flash-google').href = googleUrl(c);
+  document.getElementById('flash-google').style.display = 'none';
+  document.getElementById('show-btn').style.display = 'inline-block';
+  document.getElementById('flash-prog').style.width = `${(flashIndex % customers.length / customers.length)*100}%`;
+}
+document.getElementById('show-btn').onclick = () => {
+  const c = customers[flashIndex % customers.length];
+  document.getElementById('flash-details').innerHTML = `
+    <strong>${c.name || ''}</strong><br>
+    ${c.city} | ${c.cluster || ''}<br>
+    Tags: ${c.tags || ''} | Rampe: ${c.rampe || ''}<br>
+    ${c.notes ? '<span style="color:var(--warn)">'+c.notes+'</span>' : ''}
+    ${c.red ? '<span style="color:var(--red)"> 🔴</span>' : ''}
+  `;
+  document.getElementById('flash-google').style.display = 'inline-block';
+  document.getElementById('show-btn').style.display = 'none';
+};
+document.getElementById('next-btn').onclick = () => { flashIndex++; showFlash(); };
+
+// Quiz
+function nextQuiz() {
+  if (customers.length < 4) return;
+  const c = customers[Math.floor(Math.random()*customers.length)];
+  document.getElementById('quiz-num').textContent = c.id;
+  document.getElementById('quiz-feedback').textContent = '';
+  document.getElementById('quiz-google').style.display = 'none';
+  document.getElementById('quiz-google').href = googleUrl(c);
+  const options = [c];
+  while (options.length < 4) {
+    const r = customers[Math.floor(Math.random()*customers.length)];
+    if (!options.find(o => o.id === r.id)) options.push(r);
+  }
+  options.sort(() => Math.random() - 0.5);
+  const container = document.getElementById('quiz-options');
+  container.innerHTML = '';
+  options.forEach(opt => {
+    const btn = document.createElement('button');
+    btn.textContent = `${opt.city} (${opt.cluster || '?'})`;
+    btn.onclick = () => {
+      if (opt.id === c.id) {
+        quizCorrect++; streak++;
+        document.getElementById('quiz-feedback').innerHTML = '<span style="color:var(--ok)">✓ Richtig!</span>';
+      } else {
+        quizWrong++; streak = 0;
+        document.getElementById('quiz-feedback').innerHTML = `<span style="color:var(--red)">✗ Richtig: ${c.city}</span>`;
+      }
+      document.getElementById('correct').textContent = quizCorrect;
+      document.getElementById('wrong').textContent = quizWrong;
+      document.getElementById('streak').textContent = streak;
+      document.getElementById('quiz-google').style.display = 'inline-block';
+      setTimeout(nextQuiz, 1400);
+    };
+    container.appendChild(btn);
+  });
+}
+
+function renderClusters() {
+  const groups = {};
+  customers.forEach(c => {
+    const cl = c.cluster || 'Ohne';
+    if (!groups[cl]) groups[cl] = [];
+    groups[cl].push(c);
+  });
+  let html = '';
+  Object.keys(groups).sort().forEach(cl => {
+    const isRed = groups[cl].some(c => c.red);
+    html += `<div class="cluster-group ${isRed?'red':''}"><h3>${cl} (${groups[cl].length})</h3>`;
+    groups[cl].forEach(c => {
+      html += `<span class="item ${c.red?'red':''}">${c.id} – ${c.city} <a href="${googleUrl(c)}" target="_blank" style="color:#93c5fd;font-size:.75rem">Maps</a></span>`;
+    });
+    html += '</div>';
+  });
+  document.getElementById('cluster-list').innerHTML = html || '<p>Keine Daten.</p>';
+}
+
+function renderStaedte() {
+  const groups = {};
+  customers.forEach(c => { if (!groups[c.city]) groups[c.city]=[]; groups[c.city].push(c); });
+  let html = '';
+  Object.keys(groups).sort().forEach(city => {
+    html += `<div class="cluster-group"><h3>${city} (${groups[city].length})</h3>`;
+    groups[city].forEach(c => {
+      html += `<span class="item ${c.red?'red':''}">${c.id} (${c.tags||''}) <a href="${googleUrl(c)}" target="_blank" style="color:#93c5fd">Maps</a></span>`;
+    });
+    html += '</div>';
+  });
+  document.getElementById('stadt-list').innerHTML = html;
+}
+
+function renderRot() {
+  const reds = customers.filter(c => c.red || c.notes || (c.tags && c.tags.includes('30er')));
+  let html = reds.length ? '' : '<p>Keine besonderen Einträge.</p>';
+  reds.forEach(c => {
+    html += `<div class="item red" style="display:block;margin:.4rem 0">
+      <strong>${c.id}</strong> – ${c.name||''} – ${c.city} (${c.cluster||''}) ${c.notes?' – '+c.notes:''}
+      <a href="${googleUrl(c)}" target="_blank" class="btn google-btn" style="margin-left:.5rem">Google</a>
+    </div>`;
+  });
+  document.getElementById('rot-list').innerHTML = html;
+}
+
+
+
+function startTourQuiz() {
+  if (customers.length < 4) return;
+  const c = customers[Math.floor(Math.random() * customers.length)];
+  const correct = c.tour || 'Stadt Tour';
+  const tours = [...new Set(customers.map(x => x.tour || 'Stadt Tour'))];
+  const options = [correct];
+  while (options.length < 4 && options.length < tours.length) {
+    const r = tours[Math.floor(Math.random() * tours.length)];
+    if (!options.includes(r)) options.push(r);
+  }
+  options.sort(() => Math.random() - 0.5);
+  let html = `<div class="card"><div class="big">${c.id}</div><p>${c.name||''} – ${c.city}</p><p>Welche Tour?</p><div class="btns">`;
+  options.forEach(opt => {
+    html += `<button onclick="checkTour('${opt}', '${correct}')">${opt}</button>`;
+  });
+  html += '</div><div id="tour-fb"></div></div>';
+  document.getElementById('tour-learn-area').innerHTML = html;
+}
+function checkTour(chosen, correct) {
+  const fb = document.getElementById('tour-fb');
+  fb.innerHTML = chosen === correct ? '<span style="color:var(--ok)">✓ Richtig!</span>' : `<span style="color:var(--red)">✗ Richtig: ${correct}</span>`;
+  setTimeout(startTourQuiz, 1200);
+}
+function showTourCards() {
+  const tours = [...new Set(customers.map(c => c.tour || 'Stadt Tour'))];
+  let html = '<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(200px,1fr));gap:1rem;">';
+  tours.forEach(t => {
+    const count = customers.filter(c => (c.tour||'Stadt Tour') === t).length;
+    html += `<div class="card" style="cursor:pointer;" onclick="showTourList('${t}')"><div style="font-size:1.2rem;font-weight:700;">${t}</div><div style="color:var(--muted)">${count} Kunden</div></div>`;
+  });
+  html += '</div>';
+  document.getElementById('tour-learn-area').innerHTML = html;
+}
+function showTourList(tour) {
+  const list = customers.filter(c => (c.tour||'Stadt Tour') === tour);
+  let html = `<h3>${tour} (${list.length})</h3>`;
+  list.forEach(c => html += `<div>${c.id} – ${c.city} – ${c.name||''} <a href="${googleUrl(c)}" target="_blank">Maps</a></div>`);
+  document.getElementById('tour-learn-area').innerHTML = html + '<button onclick="showTourCards()" style="margin-top:1rem;">Zurück</button>';
+}
+
+function showSmallTours() {
+  const groups = {};
+  customers.forEach(c => {
+    const t = c.tour || 'Stadt Tour';
+    if (!groups[t]) groups[t] = [];
+    groups[t].push(c);
+  });
+  let html = '';
+  Object.keys(groups).sort().forEach(tour => {
+    const pts = groups[tour].sort((a,b) => a.city.localeCompare(b.city));
+    html += `<div class="card" style="margin-bottom:1rem;"><h3>${tour} (${pts.length})</h3><ul style="columns:2;font-size:.9rem;">`;
+    pts.forEach(p => html += `<li>${p.id} – ${p.city} ${p.notes?'🔴':''} <a href="${googleUrl(p)}" target="_blank">Maps</a></li>`);
+    html += '</ul></div>';
+  });
+  document.getElementById('tour-output').innerHTML = html;
+}
+
+function generateLogicalTours() {
+  const groups = {};
+  customers.forEach(c => {
+    const key = c.rheinseite || c.cluster || 'Sonstiges';
+    if (!groups[key]) groups[key] = [];
+    groups[key].push(c);
+  });
+  let html = '<h3>Touren nach Rheinseite:</h3>';
+  Object.keys(groups).sort().forEach((k, i) => {
+    const pts = groups[k].sort((a,b) => a.city.localeCompare(b.city));
+    html += `<div class="card" style="border-left:4px solid ${['#3b82f6','#22c55e','#f59e0b','#ef4444'][i%4]}"><strong>${k}</strong><ul>`;
+    pts.forEach(p => html += `<li>${p.id} – ${p.city} ${p.red?'🔴':''} <a href="${googleUrl(p)}" target="_blank">Maps</a></li>`);
+    html += '</ul></div>';
+  });
+  document.getElementById('tour-output').innerHTML = html;
+}
+function clearTours() { document.getElementById('tour-output').innerHTML = ''; }
+
+
+function showBesonderheiten() {
+  const specials = customers.filter(c => c.notes || c.red || (c.tags && c.tags !== 'alle'));
+  let html = '<h3>Kunden mit Besonderheiten / speziellen Tags</h3>';
+  specials.forEach(c => {
+    html += `<div style="padding:.4rem 0;border-bottom:1px solid #334155;">
+      <strong>${c.id}</strong> – ${c.name||''} – ${c.city}<br>
+      <small>${c.cluster||''} | ${c.tags||''} | ${c.notes||'–'}</small>
+      <a href="${googleUrl(c)}" target="_blank" style="margin-left:.5rem;color:#93c5fd;">Maps</a>
+    </div>`;
+  });
+  document.getElementById('besonderheiten-list').innerHTML = html || '<p>Keine Besonderheiten.</p>';
+}
+
+function initMap() {
+  renderMapVisual();
+  document.getElementById('map-filter').oninput = renderMapVisual;
+}
+function renderMapVisual() {
+  const q = (document.getElementById('map-filter')?.value || '').toLowerCase();
+  const container = document.getElementById('map-markers');
+  const filtered = customers.filter(c => !q || 
+    (c.tour||'').toLowerCase().includes(q) || 
+    c.city.toLowerCase().includes(q) || 
+    c.id.toLowerCase().includes(q) ||
+    (c.name||'').toLowerCase().includes(q)
+  );
+  // Bounds: Lat 50.36-51.20, Lng 6.08-7.98
+  const minLat=50.36, maxLat=51.20, minLng=6.08, maxLng=7.98;
+  let html = '';
+  filtered.forEach(c => {
+    if (!c.lat || !c.lng) return;
+    const x = ((c.lng - minLng) / (maxLng - minLng)) * 100;
+    const y = ((maxLat - c.lat) / (maxLat - minLat)) * 100;
+    const color = c.red || c.notes ? '#ef4444' : (c.tags && c.tags.includes('30er') ? '#f59e0b' : '#3b82f6');
+    html += `<div style="position:absolute;left:${x}%;top:${y}%;transform:translate(-50%,-50%);cursor:pointer;z-index:1;" 
+      onmouseenter="this.style.zIndex=10;this.querySelector('div').style.transform='scale(1.8)'"
+      onmouseleave="this.style.zIndex=1;this.querySelector('div').style.transform='scale(1)'"
+      onclick="showMapDetail('${c.id}')">
+      <div style="width:12px;height:12px;background:${color};border:2px solid white;border-radius:50%;box-shadow:0 0 6px rgba(0,0,0,.6);transition:transform .15s;"></div>
+    </div>`;
+  });
+  container.innerHTML = html;
+}
+function showMapDetail(id) {
+  const c = customers.find(x => x.id === id);
+  if (!c) return;
+  const color = c.red || c.notes ? '#ef4444' : (c.tags && c.tags.includes('30er') ? '#f59e0b' : '#3b82f6');
+  document.getElementById('map-detail').innerHTML = `
+    <h4 style="margin-top:0;color:${color}">${c.id}</h4>
+    <p><strong>${c.name||'–'}</strong></p>
+    <p>${c.city}<br>${c.tour||'–'}</p>
+    <p style="font-size:.9rem;color:var(--muted)">Tags: ${c.tags||'–'}<br>Rampe: ${c.rampe||'–'}<br>Rheinseite: ${c.rheinseite||'–'}</p>
+    ${c.notes ? '<p style="color:#f59e0b"><b>Besonderheit:</b> '+c.notes+'</p>' : ''}
+    <p style="font-size:.85rem">${c.address||''}</p>
+    <a href="${googleUrl(c)}" target="_blank" class="btn google-btn" style="display:inline-block;margin-top:.5rem;">Google Maps öffnen</a>
+    <button class="btn-secondary" style="margin-left:.5rem;margin-top:.5rem;" onclick="document.querySelector('[data-mode=verwalten]').click(); editCustomer(${customers.indexOf(c)})">Bearbeiten</button>
+  `;
+}
+
+
+function renderAnalyse() {
+  const total = customers.length;
+  const rhein = {};
+  const tags = {};
+  const rampe = {};
+  const redCount = customers.filter(c => c.red || c.notes).length;
+  customers.forEach(c => {
+    const r = c.rheinseite || 'unbekannt';
+    rhein[r] = (rhein[r]||0) + 1;
+    const t = c.tags || 'alle';
+    tags[t] = (tags[t]||0) + 1;
+    const ra = c.rampe || 'unbekannt';
+    rampe[ra] = (rampe[ra]||0) + 1;
+  });
+  let html = `<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:1rem;margin-bottom:1.5rem;">
+    <div class="card" style="text-align:center;"><div style="font-size:2rem;font-weight:bold;color:var(--accent)">${total}</div>Kunden gesamt</div>
+    <div class="card" style="text-align:center;"><div style="font-size:2rem;font-weight:bold;color:var(--red)">${redCount}</div>mit Besonderheit</div>
+  </div>`;
+  html += '<h4>Rheinseite</h4>';
+  Object.keys(rhein).forEach(k => {
+    const pct = Math.round(rhein[k]/total*100);
+    html += `<div style="margin:.5rem 0;"><div style="display:flex;justify-content:space-between;"><span>${k}</span><span>${rhein[k]} (${pct}%)</span></div><div style="height:20px;background:#334155;border-radius:10px;overflow:hidden;"><div style="width:${pct}%;height:100%;background:var(--accent);"></div></div></div>`;
+  });
+  html += '<h4 style="margin-top:1.5rem;">Tags / Lieferart</h4>';
+  Object.keys(tags).forEach(k => {
+    const pct = Math.round(tags[k]/total*100);
+    const color = k.includes('30er') ? 'var(--red)' : k.includes('48er') ? 'var(--warn)' : 'var(--ok)';
+    html += `<div style="margin:.5rem 0;"><div style="display:flex;justify-content:space-between;"><span>${k}</span><span>${tags[k]} (${pct}%)</span></div><div style="height:20px;background:#334155;border-radius:10px;overflow:hidden;"><div style="width:${pct}%;height:100%;background:${color};"></div></div></div>`;
+  });
+  html += '<h4 style="margin-top:1.5rem;">Rampe</h4>';
+  Object.keys(rampe).forEach(k => {
+    const pct = Math.round(rampe[k]/total*100);
+    html += `<div style="margin:.5rem 0;"><div style="display:flex;justify-content:space-between;"><span>${k}</span><span>${rampe[k]} (${pct}%)</span></div><div style="height:20px;background:#334155;border-radius:10px;overflow:hidden;"><div style="width:${pct}%;height:100%;background:#a855f7;"></div></div></div>`;
+  });
+  document.getElementById('analyse-content').innerHTML = html;
+}
+
+function renderTable() {
+  const q = (document.getElementById('manage-search')?.value || '').toLowerCase();
+  const filtered = customers.filter(c => !q || c.id.includes(q) || (c.name||'').toLowerCase().includes(q) || c.city.toLowerCase().includes(q) || (c.cluster||'').toLowerCase().includes(q));
+  const tbody = document.querySelector('#customer-table tbody');
+  tbody.innerHTML = '';
+  filtered.forEach(c => {
+    const realIdx = customers.indexOf(c);
+    const tr = document.createElement('tr');
+    if (c.red) tr.className = 'red-row';
+    tr.innerHTML = `
+      <td><strong>${c.id}</strong></td>
+      <td>${(c.name||'').substring(0,40)}</td>
+      <td>${c.city}</td>
+      <td>${c.cluster||''}</td>
+      <td>${c.tags||''}</td>
+      <td>${c.red?'🔴':''}</td>
+      <td>
+        <button class="btn-secondary" style="padding:.4rem .8rem;font-size:.85rem" onclick="editCustomer(${realIdx})">Bearbeiten</button>
+        <button class="btn-red" style="padding:.4rem .8rem;font-size:.85rem" onclick="deleteCustomer(${realIdx})">Löschen</button>
+        <a href="${googleUrl(c)}" target="_blank" class="btn google-btn" style="padding:.4rem .8rem;font-size:.85rem">Maps</a>
+      </td>`;
+    tbody.appendChild(tr);
+  });
+  document.getElementById('count').textContent = customers.length;
+}
+document.getElementById('manage-search').oninput = renderTable;
+
+document.getElementById('customer-form').onsubmit = (e) => {
+  e.preventDefault();
+  const idx = document.getElementById('edit-index').value;
+  const c = {
+    id: document.getElementById('f-id').value.trim(),
+    name: document.getElementById('f-name').value.trim(),
+    city: document.getElementById('f-city').value.trim(),
+    cluster: document.getElementById('f-cluster').value.trim(),
+    address: document.getElementById('f-address').value.trim(),
+    rheinseite: document.getElementById('f-rhein').value,
+    tags: document.getElementById('f-tags').value.trim(),
+    rampe: document.getElementById('f-rampe').value.trim(),
+    notes: document.getElementById('f-notes').value.trim(),
+    red: document.getElementById('f-red').checked,
+    lat: null, lng: null
+  };
+  if (!c.id || !c.city) return alert('Nummer und Stadt Pflicht.');
+  if (idx === '') customers.push(c);
+  else customers[parseInt(idx)] = c;
+  saveData();
+  resetForm();
+  renderTable();
+  alert('Gespeichert!');
+};
+
+function editCustomer(idx) {
+  const c = customers[idx];
+  document.getElementById('edit-index').value = idx;
+  document.getElementById('f-id').value = c.id;
+  document.getElementById('f-name').value = c.name || '';
+  document.getElementById('f-city').value = c.city;
+  document.getElementById('f-cluster').value = c.cluster || '';
+  document.getElementById('f-address').value = c.address || '';
+  document.getElementById('f-rhein').value = c.rheinseite || 'links';
+  document.getElementById('f-tags').value = c.tags || '';
+  document.getElementById('f-rampe').value = c.rampe || '';
+  document.getElementById('f-red').checked = !!c.red;
+  document.getElementById('f-notes').value = c.notes || '';
+  // Switch to verwalten tab and scroll to form
+  document.querySelector('[data-mode="verwalten"]').click();
+  setTimeout(() => document.getElementById('customer-form').scrollIntoView({behavior:'smooth'}), 100);
+  alert('Kunde geladen – jetzt bearbeiten und Speichern klicken.');
+}
+function deleteCustomer(idx) {
+  const c = customers[idx];
+  if (confirm('Kunde ' + c.id + ' (' + (c.name||c.city) + ') wirklich löschen?')) {
+    customers.splice(idx,1);
+    saveData();
+    renderTable();
+    alert('Gelöscht.');
+  }
+}
+function resetForm() {
+  document.getElementById('customer-form').reset();
+  document.getElementById('edit-index').value = '';
+}
+
+function exportData() {
+  const blob = new Blob([JSON.stringify(customers,null,2)], {type:'application/json'});
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = 'edeka-kunden-rheinland.json';
+  a.click();
+}
+
+function exportCSV() {
+  const headers = ['Kundennr','Name','Stadt','Adresse','Cluster','Rheinseite','Tags','Frueh','Rampe','Notizen','Rot'];
+  let csv = headers.join(';') + '\n';
+  customers.forEach(c => {
+    const row = [
+      c.id || '',
+      (c.name||'').replace(/;/g, ','),
+      c.city || '',
+      (c.address||'').replace(/;/g, ','),
+      c.cluster || '',
+      c.rheinseite || '',
+      c.tags || '',
+      c.frueh || '',
+      c.rampe || '',
+      (c.notes||'').replace(/;/g, ','),
+      c.red ? 'ja' : 'nein'
+    ];
+    csv += row.join(';') + '\n';
+  });
+  const blob = new Blob([csv], {type:'text/csv;charset=utf-8;'});
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = 'edeka-kunden-mit-adresse.csv';
+  a.click();
+}
+function importData(e) {
+  const file = e.target.files[0];
+  if (!file) return;
+  const reader = new FileReader();
+  reader.onload = () => {
+    try {
+      const data = JSON.parse(reader.result);
+      if (Array.isArray(data)) { customers = data; saveData(); renderTable(); alert('Import ok: '+data.length); }
+    } catch(err) { alert('Fehler'); }
+  };
+  reader.readAsText(file);
+}
+
+// Embed real data
+const INITIAL_CUSTOMERS = [{"id":"70718","name":"Bernd Prämassing e.K.","city":"Adenau","cluster":"links","address":"Dr.-Creutz-Platz 18, Adenau, Deutschland","rheinseite":"links","tags":"alle","frueh":"alle","rampe":"ohne Rampe","notes":"","red":false,"lat":50.382,"lng":6.93,"tour":"Ahr Tour"},{"id":"70697","name":"Kirsten Mohr e.K.","city":"Alfter","cluster":"links","address":"Am Herrenwingert 11, Alfter, Deutschland","rheinseite":"links","tags":"alle","frueh":"alle","rampe":"ohne Rampe","notes":"","red":false,"lat":50.735,"lng":7.009,"tour":"Bonn Tour"},{"id":"73519","name":"Lebensmittel Frische-Märkte","city":"Alfter","cluster":"links","address":"Hauptstr. 283, Alfter, Deutschland","rheinseite":"links","tags":"alle","frueh":"alle","rampe":"ohne Rampe","notes":"","red":false,"lat":50.735,"lng":7.009,"tour":"Bonn Tour"},{"id":"74191","name":"trinkgut Getränkeeinzelhandel GmbH","city":"Alfter","cluster":"links","address":"Alfterer Str. 43, Alfter, Deutschland","rheinseite":"links","tags":"alle","frueh":"alle","rampe":"ohne Rampe","notes":"","red":false,"lat":50.735,"lng":7.009,"tour":"Bonn Tour"},{"id":"71631","name":"Rudolphi KG","city":"Bad Neuenahr","cluster":"links | 48er","address":"Am Silberberg 2, Bad Neuenahr, Deutschland","rheinseite":"links","tags":"48er","frueh":"48er","rampe":"Rampe","notes":"","red":false,"lat":50.543,"lng":7.114,"tour":"Ahr Tour"},{"id":"73379","name":"Ingeborg Müller Lebensmittel e.K.","city":"Bad Neuenahr-Ahrweiler","cluster":"links | 48er","address":"Johannisstr. 22, Bad Neuenahr-Ahrweiler, Deutschland","rheinseite":"links","tags":"48er","frueh":"48er","rampe":"ohne Rampe","notes":"","red":false,"lat":50.543,"lng":7.114,"tour":"Ahr Tour"},{"id":"70123","name":"W. Bachem GmbH","city":"Bonn","cluster":"links | 54er","address":"Sternenburgstr. 2-4, Bonn, Deutschland","rheinseite":"links","tags":"54er","frueh":"54er","rampe":"ohne Rampe","notes":"","red":false,"lat":50.7374,"lng":7.0982,"tour":"Bonn Tour"},{"id":"70179","name":"Timo Boden Lebensmittel KG","city":"Bonn","cluster":"links | 30er","address":"Mittelstraße 6-10, Bonn, Deutschland","rheinseite":"links","tags":"30er","frueh":"30er","rampe":"ohne Rampe","notes":"","red":true,"lat":50.7374,"lng":7.0982,"tour":"Bonn Tour"},{"id":"70329","name":"Uwe Knips EDEKA Aktiv-Markt","city":"Bonn","cluster":"links | 48er","address":"Mainzer Str. 140, Bonn, Deutschland","rheinseite":"links","tags":"48er","frueh":"48er","rampe":"ohne Rampe","notes":"","red":false,"lat":50.7374,"lng":7.0982,"tour":"Bonn Tour"},{"id":"70417","name":"EDEKA Laura Bachem","city":"Bonn","cluster":"links","address":"Vorgebirgsbahnweg 3, Bonn, Deutschland","rheinseite":"links","tags":"alle","frueh":"alle","rampe":"Rampe","notes":"","red":false,"lat":50.7374,"lng":7.0982,"tour":"Bonn Tour"},{"id":"70488","name":"Frischecenter Kipping OHG","city":"Bonn","cluster":"links | 48er","address":"Im Mühlenbach 2A, Bonn, Deutschland","rheinseite":"links","tags":"48er","frueh":"48er","rampe":"ohne Rampe","notes":"","red":false,"lat":50.7374,"lng":7.0982,"tour":"Bonn Tour"},{"id":"70704","name":"Mohr Frischecenter KG","city":"Bonn","cluster":"links","address":"Bornheimerstraße 162, Bonn, Deutschland","rheinseite":"links","tags":"alle","frueh":"alle","rampe":"Rampe","notes":"","red":false,"lat":50.7374,"lng":7.0982,"tour":"Bonn Tour"},{"id":"70704-20","name":"Mohr Frischecenter KG","city":"Bonn","cluster":"links","address":"Bornheimerstraße 162, Bonn, Deutschland","rheinseite":"links","tags":"alle","frueh":"alle","rampe":"Rampe","notes":"","red":false,"lat":50.7374,"lng":7.0982,"tour":"Bonn Tour"},{"id":"70719","name":"Mohr Frischecenter KG","city":"Bonn","cluster":"links","address":"Lievelingsweg 84, Bonn, Deutschland","rheinseite":"links","tags":"alle","frueh":"alle","rampe":"Rampe","notes":"","red":false,"lat":50.7374,"lng":7.0982,"tour":"Bonn Tour"},{"id":"70789","name":"Dirk Schüller","city":"Bonn","cluster":"links | 48er","address":"Konstantinstr. 4, Bonn, Deutschland","rheinseite":"links","tags":"48er","frueh":"48er","rampe":"ohne Rampe","notes":"","red":false,"lat":50.7374,"lng":7.0982,"tour":"Bonn Tour"},{"id":"70795","name":"Theo Schüren GmbH","city":"Bonn","cluster":"links | 48er","address":"Röttgener Str. 69, Bonn, Deutschland","rheinseite":"links","tags":"48er","frueh":"48er","rampe":"ohne Rampe","notes":"","red":false,"lat":50.7374,"lng":7.0982,"tour":"Bonn Tour"},{"id":"70929","name":"Rudolf Vogl oHG","city":"Bonn","cluster":"links","address":"Karlstr. 33, Bonn, Deutschland","rheinseite":"links","tags":"alle","frueh":"alle","rampe":"Rampe","notes":"","red":false,"lat":50.7374,"lng":7.0982,"tour":"Bonn Tour"},{"id":"70929-20","name":"Rudolf Vogl oHG","city":"Bonn","cluster":"links","address":"Karlstr. 33, Bonn, Deutschland","rheinseite":"links","tags":"alle","frueh":"alle","rampe":"Rampe","notes":"","red":false,"lat":50.7374,"lng":7.0982,"tour":"Bonn Tour"},{"id":"70931","name":"Rudolf Vogl oHG","city":"Bonn","cluster":"links","address":"Basketsring 3, Bonn, Deutschland","rheinseite":"links","tags":"alle","frueh":"alle","rampe":"Rampe","notes":"","red":false,"lat":50.7374,"lng":7.0982,"tour":"Bonn Tour"},{"id":"70931-50","name":"Rudolf Vogl oHG","city":"Bonn","cluster":"links","address":"Basketsring 3, Bonn, Deutschland","rheinseite":"links","tags":"alle","frueh":"alle","rampe":"Rampe","notes":"","red":false,"lat":50.7374,"lng":7.0982,"tour":"Bonn Tour"},{"id":"70934","name":"Oliver Steilen","city":"Bonn","cluster":"links | 30er","address":"Königstr. 79-81, Bonn, Deutschland","rheinseite":"links","tags":"30er","frueh":"30er","rampe":"ohne Rampe","notes":"","red":true,"lat":50.7374,"lng":7.0982,"tour":"Bonn Tour"},{"id":"71472","name":"Edekamarkt Alexander Fuchs","city":"Bonn","cluster":"links | 30er","address":"Römerstr. 118, Bonn, Deutschland","rheinseite":"links","tags":"30er","frueh":"30er","rampe":"Rampe","notes":"nur flacher Solo!!!","red":true,"lat":50.7374,"lng":7.0982,"tour":"Bonn Tour"},{"id":"72117","name":"MISBO GmbH","city":"Bonn","cluster":"links | 54er","address":"Reichsstr. 46, Bonn, Deutschland","rheinseite":"links","tags":"54er","frueh":"54er","rampe":"Rampe","notes":"","red":false,"lat":50.7374,"lng":7.0982,"tour":"Bonn Tour"},{"id":"72849","name":"Getränkemarkt Gülden e.K.","city":"Bonn","cluster":"links","address":"Elsässer Strasse 22, Bonn, Deutschland","rheinseite":"links","tags":"alle","frueh":"alle","rampe":"ohne Rampe","notes":"","red":false,"lat":50.7374,"lng":7.0982,"tour":"Bonn Tour"},{"id":"73007","name":"EDEKA Markt Alexandra Bock","city":"Bonn","cluster":"links","address":"Akazienweg 10, Bonn, Deutschland","rheinseite":"links","tags":"alle","frueh":"alle","rampe":"Rampe","notes":"","red":false,"lat":50.7374,"lng":7.0982,"tour":"Bonn Tour"},{"id":"74192","name":"trinkgut Getränkeeinzelhandel GmbH","city":"Bonn","cluster":"links | 48er","address":"Am Dinaswerk 4b, Bonn, Deutschland","rheinseite":"links","tags":"48er","frueh":"48er","rampe":"ohne Rampe","notes":"","red":false,"lat":50.7374,"lng":7.0982,"tour":"Bonn Tour"},{"id":"71082","name":"Feinkost Stolle Bonn e.K.","city":"Bonn-Bad Godesberg","cluster":"links | 48er","address":"Annaberger Str. 148, Bonn-Bad Godesberg, Deutschland","rheinseite":"links","tags":"48er","frueh":"48er","rampe":"ohne Rampe","notes":"","red":false,"lat":50.7374,"lng":7.0982,"tour":"Bonn Tour"},{"id":"73498","name":"Mohr Frischecenter GmbH","city":"Bonn-Dottendorf","cluster":"links","address":"Karl-Barth-Str. 92, Bonn-Dottendorf, Deutschland","rheinseite":"links","tags":"alle","frueh":"alle","rampe":"Rampe","notes":"","red":false,"lat":50.7374,"lng":7.0982,"tour":"Bonn Tour"},{"id":"70147","name":"Markus Breuer e.K.","city":"Bornheim","cluster":"links","address":"Walberberger Str. 59, Bornheim, Deutschland","rheinseite":"links","tags":"alle","frueh":"alle","rampe":"Rampe","notes":"","red":false,"lat":50.759,"lng":6.993,"tour":"Bonn Tour"},{"id":"70952","name":"Markus Bell e.K.","city":"Bornheim","cluster":"links","address":"Peter-Hausmann-Platz 1, Bornheim, Deutschland","rheinseite":"links","tags":"alle","frueh":"alle","rampe":"ohne Rampe","notes":"","red":false,"lat":50.759,"lng":6.993,"tour":"Bonn Tour"},{"id":"70952-20","name":"Markus Bell e.K.","city":"Bornheim","cluster":"links","address":"Peter-Hausmann-Platz 1, Bornheim, Deutschland","rheinseite":"links","tags":"alle","frueh":"alle","rampe":"ohne Rampe","notes":"","red":false,"lat":50.759,"lng":6.993,"tour":"Bonn Tour"},{"id":"70952-60","name":"Markus Bell e.K.","city":"Bornheim","cluster":"links","address":"Peter-Hausmann-Platz 1, Bornheim, Deutschland","rheinseite":"links","tags":"alle","frueh":"alle","rampe":"ohne Rampe","notes":"","red":false,"lat":50.759,"lng":6.993,"tour":"Bonn Tour"},{"id":"70967","name":"Schröder Steffi","city":"Bornheim","cluster":"links","address":"Moselstr. 7, Bornheim, Deutschland","rheinseite":"links","tags":"alle","frueh":"alle","rampe":"ohne Rampe","notes":"","red":false,"lat":50.759,"lng":6.993,"tour":"Bonn Tour"},{"id":"74190","name":"trinkgut Getränkeeinzelhandel GmbH","city":"Bornheim","cluster":"links","address":"Am Hellenkrenz 3, Bornheim, Deutschland","rheinseite":"links","tags":"alle","frueh":"alle","rampe":"ohne Rampe","notes":"","red":false,"lat":50.759,"lng":6.993,"tour":"Bonn Tour"},{"id":"71049","name":"Keller GmbH","city":"Kempenich","cluster":"links","address":"Burgstr. 4, Kempenich, Deutschland","rheinseite":"links","tags":"alle","frueh":"alle","rampe":"Rampe","notes":"","red":false,"lat":50.422,"lng":7.118,"tour":"Ahr Tour"},{"id":"70988","name":"Ralf Breil e.K.","city":"Meckenheim","cluster":"links","address":"Heinz-Gottschalk-Str. 1, Meckenheim, Deutschland","rheinseite":"links","tags":"alle","frueh":"alle","rampe":"Rampe","notes":"","red":false,"lat":50.623,"lng":7.023,"tour":"Bonn Tour"},{"id":"70448","name":"Paul Josef Juchem","city":"Remagen","cluster":"links | 30er","address":"Schulstr. 4, Remagen, Deutschland","rheinseite":"links","tags":"30er","frueh":"30er","rampe":"ohne Rampe","notes":"","red":true,"lat":50.578,"lng":7.227,"tour":"Ahr Tour"},{"id":"71592","name":"Rudolphi KG","city":"Remagen","cluster":"links","address":"Goethestr. 7, Remagen, Deutschland","rheinseite":"links","tags":"alle","frueh":"alle","rampe":"ohne Rampe","notes":"","red":false,"lat":50.578,"lng":7.227,"tour":"Ahr Tour"},{"id":"73597","name":"Rudolphi KG","city":"Remagen","cluster":"links","address":"Hauptstr. 133, Remagen, Deutschland","rheinseite":"links","tags":"alle","frueh":"alle","rampe":"ohne Rampe","notes":"","red":false,"lat":50.578,"lng":7.227,"tour":"Ahr Tour"},{"id":"71471","name":"Handelshof Köln Stiftung &amp; Co. KG","city":"Rheinbach","cluster":"links","address":"Kleinaltendorfer Weg 2, Rheinbach, Deutschland","rheinseite":"links","tags":"alle","frueh":"alle","rampe":"Rampe","notes":"","red":false,"lat":50.625,"lng":6.949,"tour":"Bonn Tour"},{"id":"71474","name":"Handelshof Köln Stiftung &amp; Co. KG","city":"Rheinbach","cluster":"links","address":"Kleinaltendorfer Weg 2, Rheinbach, Deutschland","rheinseite":"links","tags":"alle","frueh":"alle","rampe":"Rampe","notes":"","red":false,"lat":50.625,"lng":6.949,"tour":"Bonn Tour"},{"id":"70999","name":"Marita Thiele e.K.","city":"Sinzig","cluster":"links","address":"Kölner Str. 9, Sinzig, Deutschland","rheinseite":"links","tags":"alle","frueh":"alle","rampe":"Rampe","notes":"Rampe ja, nicht ohne Bühne!!!","red":true,"lat":50.545,"lng":7.252,"tour":"Ahr Tour"},{"id":"70409","name":"EDEKA Hüffel","city":"Swisttal","cluster":"links | 48er","address":"Essiger Str. 10, Swisttal, Deutschland","rheinseite":"links","tags":"48er","frueh":"54er","rampe":"ohne Rampe","notes":"","red":false,"lat":50.683,"lng":6.916,"tour":"Bonn Tour"},{"id":"72079","name":"EDEKA Einzelhandelsg. RR mbH","city":"Wachtberg","cluster":"links","address":"Am Wachtbergring 5, Wachtberg, Deutschland","rheinseite":"links","tags":"alle","frueh":"alle","rampe":"Rampe","notes":"","red":false,"lat":50.633,"lng":7.133,"tour":"Bonn Tour"},{"id":"72079-20","name":"EDEKA Einzelhandelsg. RR mbH","city":"Wachtberg","cluster":"links","address":"Am Wachtbergring 5, Wachtberg, Deutschland","rheinseite":"links","tags":"alle","frueh":"alle","rampe":"Rampe","notes":"","red":false,"lat":50.633,"lng":7.133,"tour":"Bonn Tour"},{"id":"70725","name":"Oliver Interbieten e.K.","city":"Weilerswist","cluster":"links","address":"Bonner Str. 6, Weilerswist, Deutschland","rheinseite":"links","tags":"alle","frueh":"alle","rampe":"Rampe","notes":"","red":false,"lat":50.752,"lng":6.838,"tour":"Bonn Tour"},{"id":"73025","name":"Oliver Interbieten e.K.","city":"Weilerswist","cluster":"links","address":"An den Eifelhecken 3, Weilerswist, Deutschland","rheinseite":"links","tags":"alle","frueh":"alle","rampe":"ohne Rampe","notes":"","red":false,"lat":50.752,"lng":6.838,"tour":"Bonn Tour"},{"id":"73201","name":"Frischmarkt Interbieten GmbH","city":"Weilerswist","cluster":"links","address":"An den Eifelhecken 3, Weilerswist, Deutschland","rheinseite":"links","tags":"alle","frueh":"alle","rampe":"ohne Rampe","notes":"","red":false,"lat":50.752,"lng":6.838,"tour":"Bonn Tour"},{"id":"73131","name":"Getränkesupermarkt V. Röcher e.K.","city":"Andernach","cluster":"links","address":"Koblenzer Str. 58, Andernach, Deutschland","rheinseite":"links","tags":"alle","frueh":"alle","rampe":"ohne Rampe","notes":"","red":false,"lat":50.439,"lng":7.401,"tour":"Koblenz Tour"},{"id":"70311","name":"Uwe Fett","city":"Bad Breisig","cluster":"links | 48er","address":"Zehnerstr. 22b, Bad Breisig, Deutschland","rheinseite":"links","tags":"48er","frueh":"48er","rampe":"ohne Rampe","notes":"","red":false,"lat":50.509,"lng":7.296,"tour":"Ahr Tour"},{"id":"71026","name":"Dirk Goerzen e.K.","city":"Koblenz","cluster":"links","address":"Am Metternicher Bahnhof 11, Koblenz, Deutschland","rheinseite":"links","tags":"alle","frueh":"alle","rampe":"Rampe","notes":"","red":false,"lat":50.3569,"lng":7.589,"tour":"Koblenz Tour"},{"id":"71890","name":"Alexander Kreuzberg e.K.","city":"Koblenz","cluster":"links","address":"Andernacher Str. 238, Koblenz, Deutschland","rheinseite":"links","tags":"alle","frueh":"alle","rampe":"Rampe","notes":"","red":false,"lat":50.3569,"lng":7.589,"tour":"Koblenz Tour"},{"id":"71892","name":"Alexander Kreuzberg e.K.","city":"Koblenz","cluster":"links | 54er","address":"Hohenzollernstr. 132, Koblenz, Deutschland","rheinseite":"links","tags":"54er","frueh":"54er","rampe":"ohne Rampe","notes":"48er am Tag besser!!!","red":true,"lat":50.3569,"lng":7.589,"tour":"Koblenz Tour"},{"id":"72801","name":"Getränkessup. S. van Hees e.K.","city":"Mülheim-Kärlich","cluster":"links","address":"Industriestr. 45, Mülheim-Kärlich, Deutschland","rheinseite":"links","tags":"alle","frueh":"alle","rampe":"ohne Rampe","notes":"","red":false,"lat":50.387,"lng":7.495,"tour":"Koblenz Tour"},{"id":"73197","name":"Getränkesupermarkt Korn e.K.","city":"Mülheim-Kärlich","cluster":"links","address":"Industriestr. 45, Mülheim-Kärlich, Deutschland","rheinseite":"links","tags":"alle","frueh":"alle","rampe":"ohne Rampe","notes":"","red":false,"lat":50.387,"lng":7.495,"tour":"Koblenz Tour"},{"id":"71127","name":"Levent Bilgin e.K.","city":"Bedburg","cluster":"links","address":"Lindenstraße 4, Bedburg, Deutschland","rheinseite":"links","tags":"alle","frueh":"alle","rampe":"Rampe","notes":"","red":false,"lat":51.0,"lng":6.566,"tour":"Köln Tour"},{"id":"72919","name":"Getränkesupermarkt Helfrich e.K.","city":"Bedburg","cluster":"links","address":"Wiesenstr. 2, Bedburg, Deutschland","rheinseite":"links","tags":"alle","frueh":"alle","rampe":"ohne Rampe","notes":"","red":false,"lat":51.0,"lng":6.566,"tour":"Köln Tour"},{"id":"70686","name":"Oliver Fischenich KG","city":"Bergheim","cluster":"links","address":"Danswellerstr. 3, Bergheim, Deutschland","rheinseite":"links","tags":"alle","frueh":"alle","rampe":"Rampe","notes":"","red":false,"lat":50.955,"lng":6.639,"tour":"Köln Tour"},{"id":"72796","name":"Getränkesupermarkt","city":"Bergheim","cluster":"links","address":"Gutenbergstr. 20, Bergheim, Deutschland","rheinseite":"links","tags":"alle","frueh":"alle","rampe":"ohne Rampe","notes":"","red":false,"lat":50.955,"lng":6.639,"tour":"Köln Tour"},{"id":"74195","name":"trinkgut Getränkeeinzelhandel GmbH","city":"Brühl","cluster":"links | 54er","address":"Wesselinger Str. 2-8, Brühl, Deutschland","rheinseite":"links","tags":"54er","frueh":"54er","rampe":"ohne Rampe","notes":"","red":false,"lat":50.829,"lng":6.905,"tour":"Köln Tour"},{"id":"70283","name":"Knell GmbH","city":"Dormagen","cluster":"links | 54er","address":"Heerstr. 9-11, Dormagen, Deutschland","rheinseite":"links","tags":"54er","frueh":"54er","rampe":"ohne Rampe","notes":"","red":false,"lat":51.096,"lng":6.84,"tour":"Dormagen Tour"},{"id":"70284","name":"Knell GmbH Getränke","city":"Dormagen","cluster":"links | 54er","address":"Heerstr. 9-11, Dormagen, Deutschland","rheinseite":"links","tags":"54er","frueh":"54er","rampe":"ohne Rampe","notes":"","red":false,"lat":51.096,"lng":6.84,"tour":"Dormagen Tour"},{"id":"72271","name":"Matthias Voßdahls e.K.","city":"Dormagen","cluster":"links","address":"Am Weißen Stein 1, Dormagen, Deutschland","rheinseite":"links","tags":"alle","frueh":"alle","rampe":"ohne Rampe","notes":"","red":false,"lat":51.096,"lng":6.84,"tour":"Dormagen Tour"},{"id":"72272","name":"Matthias Voßdahls e.K.","city":"Dormagen","cluster":"links","address":"Am Weißen Stein 3, Dormagen, Deutschland","rheinseite":"links","tags":"alle","frueh":"alle","rampe":"ohne Rampe","notes":"","red":false,"lat":51.096,"lng":6.84,"tour":"Dormagen Tour"},{"id":"72917","name":"Getränkesupermarkt Schirwitz e.K.","city":"Dormagen","cluster":"links","address":"Kieler Str. 25, Dormagen, Deutschland","rheinseite":"links","tags":"alle","frueh":"alle","rampe":"ohne Rampe","notes":"","red":false,"lat":51.096,"lng":6.84,"tour":"Dormagen Tour"},{"id":"71259","name":"Marktkauf EHG Rhein-Ruhr mbH","city":"Frechen","cluster":"links","address":"Dr.-Tusch-Str. 26-32, Frechen, Deutschland","rheinseite":"links","tags":"alle","frueh":"alle","rampe":"Rampe","notes":"","red":false,"lat":50.913,"lng":6.81,"tour":"Köln Tour"},{"id":"72923","name":"Getränkesupermarkt Ostwald e.K.","city":"Frechen","cluster":"links | 54er","address":"Aachener Str. 530, Frechen, Deutschland","rheinseite":"links","tags":"54er","frueh":"54er","rampe":"ohne Rampe","notes":"","red":false,"lat":50.913,"lng":6.81,"tour":"Köln Tour"},{"id":"73486","name":"Patrick Straßfeld e.K.","city":"Frechen","cluster":"links | 54er","address":"Aachener Str. 537, Frechen, Deutschland","rheinseite":"links","tags":"54er","frueh":"54er","rampe":"ohne Rampe","notes":"","red":false,"lat":50.913,"lng":6.81,"tour":"Köln Tour"},{"id":"71009","name":"Rath Frische Center KG","city":"Grevenbroich","cluster":"links","address":"Am Hammerwerk 24, Grevenbroich, Deutschland","rheinseite":"links","tags":"alle","frueh":"alle","rampe":"Rampe","notes":"","red":false,"lat":51.088,"lng":6.587,"tour":"Dormagen Tour"},{"id":"73337","name":"Ney e.K.","city":"Grevenbroich Südstadt","cluster":"links","address":"Von Stauffenberg Str. 1, Grevenbroich Südstadt, Deutschland","rheinseite":"links","tags":"alle","frueh":"alle","rampe":"ohne Rampe","notes":"","red":false,"lat":51.088,"lng":6.587,"tour":"Dormagen Tour"},{"id":"73337-20","name":"Ney e.K.","city":"Grevenbroich Südstadt","cluster":"links","address":"Von Stauffenberg Str. 1, Grevenbroich Südstadt, Deutschland","rheinseite":"links","tags":"alle","frueh":"alle","rampe":"ohne Rampe","notes":"","red":false,"lat":51.088,"lng":6.587,"tour":"Dormagen Tour"},{"id":"72306","name":"Frischmarkt Fausten GmbH","city":"Grevenbroich-Neukirchen","cluster":"links","address":"Am Bahndamm 1, Grevenbroich-Neukirchen, Deutschland","rheinseite":"links","tags":"alle","frueh":"alle","rampe":"Rampe","notes":"","red":false,"lat":51.088,"lng":6.587,"tour":"Dormagen Tour"},{"id":"72853","name":"Getränkesupermarkt Esch e.K.","city":"Hürth","cluster":"links | 54er","address":"Bonnstr. 246-248, Hürth, Deutschland","rheinseite":"links","tags":"54er","frueh":"54er","rampe":"ohne Rampe","notes":"","red":false,"lat":50.8705,"lng":6.8675,"tour":"Köln Tour"},{"id":"70739","name":"Heinz-Jürgen Baumann","city":"Kerpen","cluster":"links","address":"Zum Schlichshof 3, Kerpen, Deutschland","rheinseite":"links","tags":"alle","frueh":"alle","rampe":"Rampe","notes":"","red":false,"lat":50.871,"lng":6.696,"tour":"Köln Tour"},{"id":"73170","name":"Getränkesupermarkt","city":"Kerpen","cluster":"links","address":"Am Falder 12, Kerpen, Deutschland","rheinseite":"links","tags":"alle","frueh":"alle","rampe":"ohne Rampe","notes":"","red":false,"lat":50.871,"lng":6.696,"tour":"Köln Tour"},{"id":"73505","name":"Straßfeld Frischecenter KG","city":"Kerpen","cluster":"links","address":"Zum Wasserwerk 7, Kerpen, Deutschland","rheinseite":"links","tags":"alle","frueh":"alle","rampe":"Rampe","notes":"","red":false,"lat":50.871,"lng":6.696,"tour":"Köln Tour"},{"id":"70199","name":"Daub KG","city":"Köln","cluster":"links | 30er","address":"Jungbluthgasse 9, Köln, Deutschland","rheinseite":"links","tags":"30er","frueh":"48er","rampe":"ohne Rampe","notes":"nur FC Tour mit 48er!!!","red":true,"lat":50.9375,"lng":6.9603,"tour":"Köln Tour"},{"id":"70287","name":"E-Center Engels Marsdorf GmbH","city":"Köln","cluster":"links","address":"Unter Linden 286, Köln, Deutschland","rheinseite":"links","tags":"alle","frueh":"alle","rampe":"Rampe","notes":"","red":false,"lat":50.9375,"lng":6.9603,"tour":"Köln Tour"},{"id":"70418","name":"E-Center Engels Marsdorf GmbH","city":"Köln","cluster":"links","address":"Horbellerstr. 2-4, Köln, Deutschland","rheinseite":"links","tags":"alle","frueh":"alle","rampe":"Rampe","notes":"","red":false,"lat":50.9375,"lng":6.9603,"tour":"Köln Tour"},{"id":"70422","name":"Blomeier Frischmarkt KG","city":"Köln","cluster":"links | 48er","address":"Frohnhofstr. 26, Köln, Deutschland","rheinseite":"links","tags":"48er","frueh":"48er","rampe":"ohne Rampe","notes":"","red":false,"lat":50.9375,"lng":6.9603,"tour":"Köln Tour"},{"id":"70540","name":"Gerald Gans Köln Pesch e.K.","city":"Köln","cluster":"links","address":"Mengenicher Str. 26, Köln, Deutschland","rheinseite":"links","tags":"alle","frueh":"alle","rampe":"ohne Rampe","notes":"","red":false,"lat":50.9375,"lng":6.9603,"tour":"Köln Tour"},{"id":"70696","name":"R. Romano e.K.","city":"Köln","cluster":"links | 54er","address":"Berrenrather Str. 339, Köln, Deutschland","rheinseite":"links","tags":"54er","frueh":"54er","rampe":"ohne Rampe","notes":"","red":false,"lat":50.9375,"lng":6.9603,"tour":"Köln Tour"},{"id":"70830","name":"Die Kippings GmbH &amp; Co. KG","city":"Köln","cluster":"links | 54er","address":"Bahnhofstr. 2-4, Köln, Deutschland","rheinseite":"links","tags":"54er","frueh":"54er","rampe":"ohne Rampe","notes":"","red":false,"lat":50.9375,"lng":6.9603,"tour":"Köln Tour"},{"id":"70882","name":"Frischmarkt Steffens GmbH","city":"Köln","cluster":"links | 48er","address":"Ossendorfer Str. 306, Köln, Deutschland","rheinseite":"links","tags":"48er","frueh":"48er","rampe":"ohne Rampe","notes":"","red":false,"lat":50.9375,"lng":6.9603,"tour":"Köln Tour"},{"id":"70992","name":"Frischmarkt Zickuhr GmbH","city":"Köln","cluster":"links | 30er","address":"Dürener Str. 199-203, Köln, Deutschland","rheinseite":"links","tags":"30er","frueh":"48er","rampe":"ohne Rampe","notes":"nur flacher Solo!!! FC 48er!!!","red":true,"lat":50.9375,"lng":6.9603,"tour":"Köln Tour"},{"id":"71124","name":"Yannic Weeke e.K.","city":"Köln","cluster":"links | 30er","address":"Hohenstaufenring 28, Köln, Deutschland","rheinseite":"links","tags":"30er","frueh":"30er","rampe":"ohne Rampe","notes":"","red":true,"lat":50.9375,"lng":6.9603,"tour":"Köln Tour"},{"id":"71440","name":"Handelshof Köln Stiftung &amp; Co. KG","city":"Köln","cluster":"links","address":"Widdersdorfer Str. 429-431, Köln, Deutschland","rheinseite":"links","tags":"alle","frueh":"alle","rampe":"Rampe","notes":"","red":false,"lat":50.9375,"lng":6.9603,"tour":"Köln Tour"},{"id":"71443","name":"Handelshof Köln Stiftung &amp; Co. KG","city":"Köln","cluster":"links","address":"Widdersdorfer Str. 429-431, Köln, Deutschland","rheinseite":"links","tags":"alle","frueh":"alle","rampe":"Rampe","notes":"","red":false,"lat":50.9375,"lng":6.9603,"tour":"Köln Tour"},{"id":"71674","name":"Astrid Stahl e.K.","city":"Köln","cluster":"links | 54er","address":"Bitterstr. 4, Köln, Deutschland","rheinseite":"links","tags":"54er","frueh":"54er","rampe":"ohne Rampe","notes":"48er immer besser!!!","red":true,"lat":50.9375,"lng":6.9603,"tour":"Köln Tour"},{"id":"72287","name":"Tom Engels e.K.","city":"Köln","cluster":"links","address":"Longericher Str. 534, Köln, Deutschland","rheinseite":"links","tags":"alle","frueh":"alle","rampe":"Rampe","notes":"","red":false,"lat":50.9375,"lng":6.9603,"tour":"Köln Tour"},{"id":"73434","name":"Frischemarkt Astrid Stahl e.K.","city":"Köln","cluster":"links","address":"Sinnersdorfer Str. 66-68, Köln, Deutschland","rheinseite":"links","tags":"alle","frueh":"alle","rampe":"ohne Rampe","notes":"","red":false,"lat":50.9375,"lng":6.9603,"tour":"Köln Tour"},{"id":"74186","name":"trinkgut Getränkeeinzelhandel GmbH","city":"Köln","cluster":"links | 48er","address":"Mathias-Brüggen-Str. 1, Köln, Deutschland","rheinseite":"links","tags":"48er","frueh":"48er","rampe":"ohne Rampe","notes":"","red":false,"lat":50.9375,"lng":6.9603,"tour":"Köln Tour"},{"id":"74229","name":"trinkgut Getränkeeinzelhandel GmbH","city":"Köln-Chorweiler","cluster":"links","address":"Elbeallee 23, Köln-Chorweiler, Deutschland","rheinseite":"links","tags":"alle","frueh":"alle","rampe":"ohne Rampe","notes":"","red":false,"lat":50.9375,"lng":6.9603,"tour":"Köln Tour"},{"id":"71012","name":"Romano Frischecenter KG","city":"Köln-Godorf","cluster":"links","address":"Godorfer Hauptstr. 165, Köln-Godorf, Deutschland","rheinseite":"links","tags":"alle","frueh":"alle","rampe":"Rampe","notes":"","red":false,"lat":50.9375,"lng":6.9603,"tour":"Köln Tour"},{"id":"70420","name":"Blomeier Frischmarkt KG","city":"Pulheim","cluster":"links","address":"Dorfplatz 1, Pulheim, Deutschland","rheinseite":"links","tags":"alle","frueh":"alle","rampe":"ohne Rampe","notes":"","red":false,"lat":51.0,"lng":6.8,"tour":"Köln Tour"},{"id":"72916","name":"Getränkesupermarkt Schirwitz e.K.","city":"Pulheim","cluster":"links","address":"Siemensstr. 9, Pulheim, Deutschland","rheinseite":"links","tags":"alle","frueh":"alle","rampe":"ohne Rampe","notes":"","red":false,"lat":51.0,"lng":6.8,"tour":"Köln Tour"},{"id":"70514","name":"Thomas Klein","city":"Wesseling","cluster":"links | 30er","address":"Burgstr. 36, Wesseling, Deutschland","rheinseite":"links","tags":"30er","frueh":"48er","rampe":"ohne Rampe","notes":"nur FC Tour mit 48er!!!","red":true,"lat":50.827,"lng":6.974,"tour":"Köln Tour"},{"id":"71080","name":"Sebastian Hein e.K.","city":"Wesseling","cluster":"links","address":"Westring 15, Wesseling, Deutschland","rheinseite":"links","tags":"alle","frueh":"alle","rampe":"Rampe","notes":"","red":false,"lat":50.827,"lng":6.974,"tour":"Köln Tour"},{"id":"72960","name":"Getränkemarkt Ahmann e.K.","city":"Wesseling","cluster":"links","address":"Kronenweg 19, Wesseling, Deutschland","rheinseite":"links","tags":"alle","frueh":"alle","rampe":"ohne Rampe","notes":"","red":false,"lat":50.827,"lng":6.974,"tour":"Köln Tour"},{"id":"72303","name":"Ralf Breil e.K.","city":"Bad Münstereifel","cluster":"links","address":"Kölner Str. 47, Bad Münstereifel, Deutschland","rheinseite":"links","tags":"alle","frueh":"alle","rampe":"Rampe","notes":"","red":false,"lat":50.557,"lng":6.766,"tour":"Euskirchen Tour"},{"id":"73127","name":"Getränkesupermarkt Ralf Breil e.K.","city":"Bad Münstereifel","cluster":"links","address":"Kölner Str. 55, Bad Münstereifel, Deutschland","rheinseite":"links","tags":"alle","frueh":"alle","rampe":"ohne Rampe","notes":"","red":false,"lat":50.557,"lng":6.766,"tour":"Euskirchen Tour"},{"id":"70470","name":"Oliver Interbieten e.K.","city":"Euskirchen","cluster":"links","address":"Billiger Str. 46, Euskirchen, Deutschland","rheinseite":"links","tags":"alle","frueh":"alle","rampe":"Rampe","notes":"","red":false,"lat":50.6606,"lng":6.7872,"tour":"Euskirchen Tour"},{"id":"70903","name":"Dirk Steilen Euskirchen e.K.","city":"Euskirchen","cluster":"links","address":"Christian Schäferstr. 24, Euskirchen, Deutschland","rheinseite":"links","tags":"alle","frueh":"alle","rampe":"Rampe","notes":"","red":false,"lat":50.6606,"lng":6.7872,"tour":"Euskirchen Tour"},{"id":"70936","name":"Eulog gGmbH","city":"Euskirchen","cluster":"links | 48er","address":"Kuchenheimer Str. 77, Euskirchen, Deutschland","rheinseite":"links","tags":"48er","frueh":"48er","rampe":"ohne Rampe","notes":"","red":false,"lat":50.6606,"lng":6.7872,"tour":"Euskirchen Tour"},{"id":"70941","name":"Eulog gGmbH Getränkemarkt","city":"Euskirchen","cluster":"links | 48er","address":"Kuchenheimer Str. 77, Euskirchen, Deutschland","rheinseite":"links","tags":"48er","frueh":"48er","rampe":"ohne Rampe","notes":"","red":false,"lat":50.6606,"lng":6.7872,"tour":"Euskirchen Tour"},{"id":"72239","name":"Ludmilla Axt e.K.","city":"Euskirchen","cluster":"links","address":"Billiger Str. 46, Euskirchen, Deutschland","rheinseite":"links","tags":"alle","frueh":"alle","rampe":"Rampe","notes":"","red":false,"lat":50.6606,"lng":6.7872,"tour":"Euskirchen Tour"},{"id":"73178","name":"Getränkesupermarkt Yanar e.K.","city":"Euskirchen","cluster":"links","address":"Stresemannstr. 5-7, Euskirchen, Deutschland","rheinseite":"links","tags":"alle","frueh":"alle","rampe":"ohne Rampe","notes":"","red":false,"lat":50.6606,"lng":6.7872,"tour":"Euskirchen Tour"},{"id":"73090","name":"Dirk Steilen Euskirchen e.K.","city":"Euskirchen-Flamersheim","cluster":"links","address":"Geierstr. 7 / Christian-Schäfer-Str., Euskirchen-Flamersheim, Deutschland","rheinseite":"links","tags":"alle","frueh":"alle","rampe":"ohne Rampe","notes":"","red":false,"lat":50.6606,"lng":6.7872,"tour":"Euskirchen Tour"},{"id":"70330","name":"Bernhard Engels GmbH","city":"Heimbach","cluster":"links","address":"Schönblick 1a, Heimbach, Deutschland","rheinseite":"links","tags":"alle","frueh":"alle","rampe":"ohne Rampe","notes":"","red":false,"lat":50.633,"lng":6.483,"tour":"Euskirchen Tour"},{"id":"73034","name":"Getränkesupermarkt Miler e.K.","city":"Mechernich-Kommern","cluster":"links","address":"Mechernicher Weg 3, Mechernich-Kommern, Deutschland","rheinseite":"links","tags":"alle","frueh":"alle","rampe":"ohne Rampe","notes":"","red":false,"lat":50.591,"lng":6.652,"tour":"Euskirchen Tour"},{"id":"71959","name":"Rosenzweig KG","city":"Zülpich","cluster":"links","address":"Bonner Str. 34, Zülpich, Deutschland","rheinseite":"links","tags":"alle","frueh":"alle","rampe":"Rampe","notes":"","red":false,"lat":50.694,"lng":6.65,"tour":"Euskirchen Tour"},{"id":"73158","name":"Getränkesupermarkt Miler e.K. II","city":"Zülpich","cluster":"links","address":"Karolinger Straße 7, Zülpich, Deutschland","rheinseite":"links","tags":"alle","frueh":"alle","rampe":"ohne Rampe","notes":"","red":false,"lat":50.694,"lng":6.65,"tour":"Euskirchen Tour"},{"id":"70127","name":"Bellefroid-Huppertz OHG","city":"Aachen","cluster":"links | 30er","address":"Haarbachtalstr. 9-11, Aachen, Deutschland","rheinseite":"links","tags":"30er","frueh":"30er","rampe":"Rampe","notes":"","red":true,"lat":50.7753,"lng":6.0839,"tour":"Aachen Tour"},{"id":"70168","name":"Bellefroid-Huppertz OHG","city":"Aachen","cluster":"links | 48er","address":"Alt-Haarener Str. 170, Aachen, Deutschland","rheinseite":"links","tags":"48er","frueh":"alle","rampe":"ohne Rampe","notes":"ggf. Solo tagsüber, Parkplatz","red":true,"lat":50.7753,"lng":6.0839,"tour":"Aachen Tour"},{"id":"70293","name":"Axel Schäfer KG","city":"Aachen","cluster":"links","address":"Elsassstr. 139, Aachen, Deutschland","rheinseite":"links","tags":"alle","frueh":"alle","rampe":"Rampe","notes":"","red":false,"lat":50.7753,"lng":6.0839,"tour":"Aachen Tour"},{"id":"71032","name":"Norbert Geldermann KG","city":"Aachen","cluster":"links","address":"Roderweg 9-12, Aachen, Deutschland","rheinseite":"links","tags":"alle","frueh":"alle","rampe":"Rampe","notes":"","red":false,"lat":50.7753,"lng":6.0839,"tour":"Aachen Tour"},{"id":"71409","name":"Frischecenter Vieler GmbH","city":"Aachen","cluster":"links","address":"Schillerstraße 20-40, Aachen, Deutschland","rheinseite":"links","tags":"alle","frueh":"alle","rampe":"Rampe","notes":"","red":false,"lat":50.7753,"lng":6.0839,"tour":"Aachen Tour"},{"id":"71793","name":"Walter Feinkost KG","city":"Aachen","cluster":"links","address":"Trierer Str. 686, Aachen, Deutschland","rheinseite":"links","tags":"alle","frueh":"alle","rampe":"Rampe","notes":"","red":false,"lat":50.7753,"lng":6.0839,"tour":"Aachen Tour"},{"id":"72838","name":"Getränkesupermarkt Kopiecki e.K.","city":"Aachen","cluster":"links","address":"Wurmbenden 9, Aachen, Deutschland","rheinseite":"links","tags":"alle","frueh":"alle","rampe":"ohne Rampe","notes":"","red":false,"lat":50.7753,"lng":6.0839,"tour":"Aachen Tour"},{"id":"73052","name":"Norbert Geldermann KG","city":"Aachen","cluster":"links","address":"Roder Weg 9-11, Aachen, Deutschland","rheinseite":"links","tags":"alle","frueh":"alle","rampe":"ohne Rampe","notes":"","red":false,"lat":50.7753,"lng":6.0839,"tour":"Aachen Tour"},{"id":"73087","name":"Axel Schäfer KG trinkgut","city":"Aachen","cluster":"links","address":"Elsassstr. 139, Aachen, Deutschland","rheinseite":"links","tags":"alle","frueh":"alle","rampe":"ohne Rampe","notes":"","red":false,"lat":50.7753,"lng":6.0839,"tour":"Aachen Tour"},{"id":"73476","name":"Nicole Geldermann e.K.","city":"Aachen","cluster":"links | 30er","address":"Schlossparkstr. 4-6, Aachen, Deutschland","rheinseite":"links","tags":"30er","frueh":"30er","rampe":"Rampe","notes":"","red":true,"lat":50.7753,"lng":6.0839,"tour":"Aachen Tour"},{"id":"73479","name":"Adebahr Lebensmittel KG","city":"Aachen","cluster":"links | 30er","address":"Kapellenstr. 16-18, Aachen, Deutschland","rheinseite":"links","tags":"30er","frueh":"30er","rampe":"Rampe","notes":"","red":true,"lat":50.7753,"lng":6.0839,"tour":"Aachen Tour"},{"id":"74237","name":"trinkgut Getränkeeinzelhandel GmbH","city":"Aachen","cluster":"links","address":"Wurmbenden 9, Aachen, Deutschland","rheinseite":"links","tags":"alle","frueh":"alle","rampe":"ohne Rampe","notes":"","red":false,"lat":50.7753,"lng":6.0839,"tour":"Aachen Tour"},{"id":"70308","name":"Norbert Geldermann KG","city":"Aldenhoven","cluster":"links","address":"Am Alten Bahnhof 2, Aldenhoven, Deutschland","rheinseite":"links","tags":"alle","frueh":"alle","rampe":"Rampe","notes":"","red":false,"lat":50.896,"lng":6.283,"tour":"Düren Tour"},{"id":"70784","name":"Alexandra Holland e.K.","city":"Alsdorf","cluster":"links","address":"Eschweiler Str. 2a, Alsdorf, Deutschland","rheinseite":"links","tags":"alle","frueh":"alle","rampe":"Rampe","notes":"","red":false,"lat":50.874,"lng":6.161,"tour":"Aachen Tour"},{"id":"73037","name":"Getränkesupermarkt Gehlich e.K.","city":"Alsdorf","cluster":"links","address":"Aachener Str. 120, Alsdorf, Deutschland","rheinseite":"links","tags":"alle","frueh":"alle","rampe":"ohne Rampe","notes":"","red":false,"lat":50.874,"lng":6.161,"tour":"Aachen Tour"},{"id":"71034","name":"Jansen KG","city":"Baesweiler","cluster":"links","address":"Im Kirchwinkel 5 F, Baesweiler, Deutschland","rheinseite":"links","tags":"alle","frueh":"alle","rampe":"Rampe","notes":"","red":false,"lat":50.909,"lng":6.188,"tour":"Aachen Tour"},{"id":"70548","name":"A. Müllin e.K.","city":"Düren","cluster":"links","address":"Zollhausstr. 53, Düren, Deutschland","rheinseite":"links","tags":"alle","frueh":"alle","rampe":"Rampe","notes":"","red":false,"lat":50.8043,"lng":6.4926,"tour":"Düren Tour"},{"id":"70944","name":"Vogel &amp; Lewandowski KG","city":"Düren","cluster":"links","address":"Renkerstr. 61, Düren, Deutschland","rheinseite":"links","tags":"alle","frueh":"alle","rampe":"Rampe","notes":"","red":false,"lat":50.8043,"lng":6.4926,"tour":"Düren Tour"},{"id":"71126","name":"Tim Vogel e.K.","city":"Düren","cluster":"links","address":"Valencienner Str. 150-152, Düren, Deutschland","rheinseite":"links","tags":"alle","frueh":"alle","rampe":"ohne Rampe","notes":"","red":false,"lat":50.8043,"lng":6.4926,"tour":"Düren Tour"},{"id":"71128","name":"Rosenzweig KG","city":"Düren","cluster":"links","address":"Euskirchener Str. 101, Düren, Deutschland","rheinseite":"links","tags":"alle","frueh":"alle","rampe":"ohne Rampe","notes":"","red":false,"lat":50.8043,"lng":6.4926,"tour":"Düren Tour"},{"id":"71131","name":"Rosenzweig KG","city":"Düren","cluster":"links","address":"Kölnerlandstr. 212, Düren, Deutschland","rheinseite":"links","tags":"alle","frueh":"alle","rampe":"Rampe","notes":"","red":false,"lat":50.8043,"lng":6.4926,"tour":"Düren Tour"},{"id":"73172","name":"Rosenzweig KG","city":"Düren","cluster":"links","address":"Berliner Str. 27, Düren, Deutschland","rheinseite":"links","tags":"alle","frueh":"alle","rampe":"ohne Rampe","notes":"","red":false,"lat":50.8043,"lng":6.4926,"tour":"Düren Tour"},{"id":"73173","name":"Rosenzweig KG","city":"Düren","cluster":"links","address":"Nideggenerstr. 219, Düren, Deutschland","rheinseite":"links","tags":"alle","frueh":"alle","rampe":"ohne Rampe","notes":"","red":false,"lat":50.8043,"lng":6.4926,"tour":"Düren Tour"},{"id":"70883","name":"Esser Lebensmittel KG","city":"Erkelenz","cluster":"links","address":"Karolingerring 24, Erkelenz, Deutschland","rheinseite":"links","tags":"alle","frueh":"alle","rampe":"Rampe","notes":"","red":false,"lat":51.079,"lng":6.315,"tour":"Heinsberg Tour"},{"id":"70680","name":"Stefan Storost KG","city":"Eschweiler","cluster":"links","address":"Bonhöfferstr. 6-8, Eschweiler, Deutschland","rheinseite":"links","tags":"alle","frueh":"alle","rampe":"ohne Rampe","notes":"","red":false,"lat":50.818,"lng":6.273,"tour":"Aachen Tour"},{"id":"70933","name":"Stefan Storost KG","city":"Eschweiler","cluster":"links","address":"Am Fließ 6, Eschweiler, Deutschland","rheinseite":"links","tags":"alle","frueh":"alle","rampe":"Rampe","notes":"","red":false,"lat":50.818,"lng":6.273,"tour":"Aachen Tour"},{"id":"70676","name":"Leonhard Plum Handels KG","city":"Geilenkirchen","cluster":"links","address":"Thomashofstr. 8-14, Geilenkirchen, Deutschland","rheinseite":"links","tags":"alle","frueh":"alle","rampe":"Rampe","notes":"","red":false,"lat":50.965,"lng":6.119,"tour":"Aachen Tour"},{"id":"74221","name":"trinkgut Getränkeeinzelhandel GmbH","city":"Geilenkirchen","cluster":"links","address":"Von Humboldtstr. 103, Geilenkirchen, Deutschland","rheinseite":"links","tags":"alle","frueh":"alle","rampe":"ohne Rampe","notes":"","red":false,"lat":50.965,"lng":6.119,"tour":"Aachen Tour"},{"id":"71614","name":"Felix Adebahr e.K.","city":"Herzogenrath","cluster":"links","address":"Kaiserstr. 131, Herzogenrath, Deutschland","rheinseite":"links","tags":"alle","frueh":"alle","rampe":"Rampe","notes":"","red":false,"lat":50.868,"lng":6.095,"tour":"Aachen Tour"},{"id":"72850","name":"Getränkesupermarkt Ogiolda e.K.","city":"Herzogenrath","cluster":"links","address":"Nordsternpark 5, Herzogenrath, Deutschland","rheinseite":"links","tags":"alle","frueh":"alle","rampe":"ohne Rampe","notes":"","red":false,"lat":50.868,"lng":6.095,"tour":"Aachen Tour"},{"id":"73295","name":"Getränkesupermarkt Kozak e.K.","city":"Herzogenrath","cluster":"links","address":"Roermonder Str. 63a, Herzogenrath, Deutschland","rheinseite":"links","tags":"alle","frueh":"alle","rampe":"ohne Rampe","notes":"","red":false,"lat":50.868,"lng":6.095,"tour":"Aachen Tour"},{"id":"74204","name":"trinkgut Getränkeeinzelhandel GmbH","city":"Herzogenrath","cluster":"links","address":"Roermonder Straße 63a, Herzogenrath, Deutschland","rheinseite":"links","tags":"alle","frueh":"alle","rampe":"ohne Rampe","notes":"","red":false,"lat":50.868,"lng":6.095,"tour":"Aachen Tour"},{"id":"71068","name":"Marilo Plum GmbH &amp; Co. KG","city":"Hückelhoven","cluster":"links","address":"Parkhofstr. 53, Hückelhoven, Deutschland","rheinseite":"links","tags":"alle","frueh":"alle","rampe":"Rampe","notes":"","red":false,"lat":51.055,"lng":6.22,"tour":"Heinsberg Tour"},{"id":"73061","name":"Getränkesupermarkt Schwalm e.K.","city":"Hückelhoven","cluster":"links","address":"Am Landabsatz 2a, Hückelhoven, Deutschland","rheinseite":"links","tags":"alle","frueh":"alle","rampe":"ohne Rampe","notes":"","red":false,"lat":51.055,"lng":6.22,"tour":"Heinsberg Tour"},{"id":"72900","name":"Getränkesupermarkt Akbas e.K.","city":"Jülich","cluster":"links","address":"Aachener Str. 11a, Jülich, Deutschland","rheinseite":"links","tags":"alle","frueh":"alle","rampe":"ohne Rampe","notes":"","red":false,"lat":50.922,"lng":6.358,"tour":"Düren Tour"},{"id":"71069","name":"Kusnezow &amp; Lewandowski KG","city":"Langerwehe","cluster":"links","address":"Am vorderen Steinchen 2, Langerwehe, Deutschland","rheinseite":"links","tags":"alle","frueh":"alle","rampe":"Rampe","notes":"","red":false,"lat":50.816,"lng":6.35,"tour":"Düren Tour"},{"id":"71067","name":"Christoph Plum Handels KG","city":"Linnich","cluster":"links","address":"Erkelenzer Str. 1, Linnich, Deutschland","rheinseite":"links","tags":"alle","frueh":"alle","rampe":"Rampe","notes":"","red":false,"lat":50.978,"lng":6.267,"tour":"Düren Tour"},{"id":"74031","name":"trinkgut Getränkeeinzelhandel GmbH","city":"Linnich","cluster":"links","address":"Jülicher Str. 21, Linnich, Deutschland","rheinseite":"links","tags":"alle","frueh":"alle","rampe":"ohne Rampe","notes":"","red":false,"lat":50.978,"lng":6.267,"tour":"Düren Tour"},{"id":"70955","name":"Dennis Rosenzweig e.K.","city":"Niederzier","cluster":"links","address":"Niederzierer Str. 86, Niederzier, Deutschland","rheinseite":"links","tags":"alle","frueh":"alle","rampe":"Rampe","notes":"","red":false,"lat":50.883,"lng":6.47,"tour":"Düren Tour"},{"id":"73033","name":"Getränkesupermarkt Thoma e.K.","city":"Niederzier","cluster":"links","address":"Grabenstr. 72, Niederzier, Deutschland","rheinseite":"links","tags":"alle","frueh":"alle","rampe":"ohne Rampe","notes":"","red":false,"lat":50.883,"lng":6.47,"tour":"Düren Tour"},{"id":"71050","name":"Dino Eicker e.K.","city":"Roetgen","cluster":"links","address":"Rosentalstr. 38-40, Roetgen, Deutschland","rheinseite":"links","tags":"alle","frueh":"alle","rampe":"Rampe","notes":"","red":false,"lat":50.65,"lng":6.2,"tour":"Aachen Tour"},{"id":"70371","name":"EDEKA Cevik","city":"Stolberg","cluster":"links","address":"Prämienstr. 194, Stolberg, Deutschland","rheinseite":"links","tags":"alle","frueh":"alle","rampe":"Rampe","notes":"","red":false,"lat":50.773,"lng":6.236,"tour":"Aachen Tour"},{"id":"71163","name":"Verbrauchermarkt Endt-Kosubek","city":"Stolberg","cluster":"links","address":"Obere Steinfurt 8, Stolberg, Deutschland","rheinseite":"links","tags":"alle","frueh":"alle","rampe":"ohne Rampe","notes":"","red":false,"lat":50.773,"lng":6.236,"tour":"Aachen Tour"},{"id":"71191","name":"Cevik Ender","city":"Stolberg","cluster":"links","address":"Eisenbahnstr. 153, Stolberg, Deutschland","rheinseite":"links","tags":"alle","frueh":"alle","rampe":"Rampe","notes":"","red":false,"lat":50.773,"lng":6.236,"tour":"Aachen Tour"},{"id":"71191-20","name":"Cevik Ender","city":"Stolberg","cluster":"links","address":"Eisenbahnstr. 153, Stolberg, Deutschland","rheinseite":"links","tags":"alle","frueh":"alle","rampe":"Rampe","notes":"","red":false,"lat":50.773,"lng":6.236,"tour":"Aachen Tour"},{"id":"72930","name":"Cevik Ender trinkgut","city":"Stolberg","cluster":"links","address":"Eisenbahnstr. 153a, Stolberg, Deutschland","rheinseite":"links","tags":"alle","frueh":"alle","rampe":"ohne Rampe","notes":"","red":false,"lat":50.773,"lng":6.236,"tour":"Aachen Tour"},{"id":"71089","name":"C. Plum Titz Handels KG","city":"Titz","cluster":"links","address":"Heinrich-Gossen-Str. 3, Titz, Deutschland","rheinseite":"links","tags":"alle","frueh":"alle","rampe":"Rampe","notes":"","red":false,"lat":51.006,"lng":6.424,"tour":"Düren Tour"},{"id":"71090","name":"C. Plum Titz Handels KG Getränke","city":"Titz","cluster":"links","address":"Heinrich-Gossen-Str. 5, Titz, Deutschland","rheinseite":"links","tags":"alle","frueh":"alle","rampe":"ohne Rampe","notes":"","red":false,"lat":51.006,"lng":6.424,"tour":"Düren Tour"},{"id":"74222","name":"trinkgut Getränkeeinzelhandel GmbH","city":"Übach-Palenberg","cluster":"links","address":"Friedrich-Ebert-Str. 103, Übach-Palenberg, Deutschland","rheinseite":"links","tags":"alle","frueh":"alle","rampe":"ohne Rampe","notes":"","red":false,"lat":50.919,"lng":6.119,"tour":"Aachen Tour"},{"id":"70107","name":"Ralf Bellefroid e.K.","city":"Würselen","cluster":"links","address":"Krefelder Str. 12, Würselen, Deutschland","rheinseite":"links","tags":"alle","frueh":"alle","rampe":"Rampe","notes":"","red":false,"lat":50.818,"lng":6.134,"tour":"Aachen Tour"},{"id":"70478","name":"Matthias Kipping","city":"Bonn","cluster":"rechts | 48er","address":"Clemensstr. 39-41, Bonn, Deutschland","rheinseite":"rechts","tags":"48er","frueh":"48er","rampe":"ohne Rampe","notes":"","red":false,"lat":50.7374,"lng":7.0982,"tour":"Bonn Tour"},{"id":"72123","name":"Laura Bachem EDEKA Aktivmarkt","city":"Bonn","cluster":"rechts | 30er","address":"Mirecourtstr. 15, Bonn, Deutschland","rheinseite":"rechts","tags":"30er","frueh":"30er","rampe":"ohne Rampe","notes":"","red":true,"lat":50.7374,"lng":7.0982,"tour":"Bonn Tour"},{"id":"72836","name":"Getränkesupermarkt Esch e.K.","city":"Bonn","cluster":"rechts | 54er","address":"Gerhardstr. 12, Bonn, Deutschland","rheinseite":"rechts","tags":"54er","frueh":"54er","rampe":"ohne Rampe","notes":"","red":false,"lat":50.7374,"lng":7.0982,"tour":"Bonn Tour"},{"id":"73483","name":"Mohr Frischecenter GmbH Bonn-Beuel","city":"Bonn","cluster":"rechts | 48er","address":"Konrad-Adenauer-Platz 28, Bonn, Deutschland","rheinseite":"rechts","tags":"48er","frueh":"48er","rampe":"Rampe","notes":"","red":false,"lat":50.7374,"lng":7.0982,"tour":"Bonn Tour"},{"id":"70400","name":"EDEKA Klein","city":"Bad Honnef","cluster":"rechts","address":"Himberger Str. 35, Bad Honnef, Deutschland","rheinseite":"rechts","tags":"alle","frueh":"alle","rampe":"Rampe","notes":"","red":false,"lat":50.645,"lng":7.227,"tour":"Sieg Tour"},{"id":"70483","name":"Matthias Kipping","city":"Hennef","cluster":"rechts","address":"Sanddornweg 14, Hennef, Deutschland","rheinseite":"rechts","tags":"alle","frueh":"alle","rampe":"ohne Rampe","notes":"","red":false,"lat":50.775,"lng":7.283,"tour":"Sieg Tour"},{"id":"70566","name":"Käthe Thomas","city":"Hennef","cluster":"rechts","address":"Pleistalstr. 29, Hennef, Deutschland","rheinseite":"rechts","tags":"alle","frueh":"alle","rampe":"ohne Rampe","notes":"","red":false,"lat":50.775,"lng":7.283,"tour":"Sieg Tour"},{"id":"70664","name":"Dirk Müllin Fil.","city":"Hennef","cluster":"rechts","address":"Pantaleon-Schmitz-Platz 1, Hennef, Deutschland","rheinseite":"rechts","tags":"alle","frueh":"alle","rampe":"ohne Rampe","notes":"","red":false,"lat":50.775,"lng":7.283,"tour":"Sieg Tour"},{"id":"70169","name":"Johannes Brouwer","city":"Königswinter","cluster":"rechts | 30er","address":"Heisterbacher Str. 48, Königswinter, Deutschland","rheinseite":"rechts","tags":"30er","frueh":"30er","rampe":"ohne Rampe","notes":"nur flacher Solo!!!","red":true,"lat":50.683,"lng":7.193,"tour":"Sieg Tour"},{"id":"70205","name":"Jörg Buchner EDEKA Buchner","city":"Königswinter","cluster":"rechts | 54er","address":"Raiffeisenstr. 11, Königswinter, Deutschland","rheinseite":"rechts","tags":"54er","frueh":"alle","rampe":"ohne Rampe","notes":"TS max 54er wegen Schule!!!","red":true,"lat":50.683,"lng":7.193,"tour":"Sieg Tour"},{"id":"70464","name":"Jörg Buchner","city":"Königswinter","cluster":"rechts","address":"Am Offermannsberg 5, Königswinter, Deutschland","rheinseite":"rechts","tags":"alle","frueh":"alle","rampe":"Rampe","notes":"","red":false,"lat":50.683,"lng":7.193,"tour":"Sieg Tour"},{"id":"70501","name":"Aktiv-Märkte Klein-Heßling GmbH","city":"Lohmar","cluster":"rechts | 54er","address":"Birker Str. 2, Lohmar, Deutschland","rheinseite":"rechts","tags":"54er","frueh":"54er","rampe":"ohne Rampe","notes":"","red":false,"lat":50.841,"lng":7.214,"tour":"Sieg Tour"},{"id":"70791","name":"Klein-Heßling Lohmar GmbH","city":"Lohmar","cluster":"rechts","address":"Hauptstr. 39, Lohmar, Deutschland","rheinseite":"rechts","tags":"alle","frueh":"alle","rampe":"Rampe","notes":"","red":false,"lat":50.841,"lng":7.214,"tour":"Sieg Tour"},{"id":"71066","name":"Kötter Handels GmbH","city":"Neunkirchen","cluster":"rechts","address":"Zeithstr. 146, Neunkirchen, Deutschland","rheinseite":"rechts","tags":"alle","frueh":"alle","rampe":"ohne Rampe","notes":"","red":false,"lat":50.783,"lng":7.383,"tour":"Sieg Tour"},{"id":"71027","name":"Iris Jung e.K.","city":"Ruppichteroth","cluster":"rechts","address":"Brölstr. 2d, Ruppichteroth, Deutschland","rheinseite":"rechts","tags":"alle","frueh":"alle","rampe":"Rampe","notes":"","red":false,"lat":50.85,"lng":7.483,"tour":"Sieg Tour"},{"id":"71148","name":"Getränke Jung, Warenvertrieb Volker","city":"Ruppichteroth","cluster":"rechts","address":"Am Juliusstollen 2, Ruppichteroth, Deutschland","rheinseite":"rechts","tags":"alle","frueh":"alle","rampe":"ohne Rampe","notes":"","red":false,"lat":50.85,"lng":7.483,"tour":"Sieg Tour"},{"id":"70314","name":"Feldmann-Höner Warenvertriebs GmbH","city":"Sankt Augustin","cluster":"rechts | 30er","address":"Kölnstr. 124, Sankt Augustin, Deutschland","rheinseite":"rechts","tags":"30er","frueh":"30er","rampe":"ohne Rampe","notes":"","red":true,"lat":50.775,"lng":7.183,"tour":"Sieg Tour"},{"id":"72305","name":"Frische-Center Breil KG","city":"Sankt Augustin","cluster":"rechts","address":"Rathausallee 16, Sankt Augustin, Deutschland","rheinseite":"rechts","tags":"alle","frueh":"alle","rampe":"Rampe","notes":"","red":false,"lat":50.775,"lng":7.183,"tour":"Sieg Tour"},{"id":"70785","name":"Klein-Hessling Siegburg GmbH","city":"Siegburg","cluster":"rechts","address":"Luisenstr. 88b, Siegburg, Deutschland","rheinseite":"rechts","tags":"alle","frueh":"alle","rampe":"Rampe","notes":"","red":false,"lat":50.7952,"lng":7.207,"tour":"Sieg Tour"},{"id":"70281","name":"EDEKA-Markt J. Engels GbR","city":"Troisdorf","cluster":"rechts | 30er","address":"Hauptstr. 142-144, Troisdorf, Deutschland","rheinseite":"rechts","tags":"30er","frueh":"48er","rampe":"ohne Rampe","notes":"nur flacher Solo mit TS!!!","red":true,"lat":50.8166,"lng":7.1555,"tour":"Sieg Tour"},{"id":"71958","name":"Engels Marsdorf GmbH","city":"Troisdorf","cluster":"rechts","address":"Frankfurter Str. 19-23, Troisdorf, Deutschland","rheinseite":"rechts","tags":"alle","frueh":"alle","rampe":"Rampe","notes":"","red":false,"lat":50.8166,"lng":7.1555,"tour":"Sieg Tour"},{"id":"72293","name":"E-Center Engels Marsdorf GmbH","city":"Troisdorf","cluster":"rechts","address":"Marie-Lene-Rödder-Straße 2, Troisdorf, Deutschland","rheinseite":"rechts","tags":"alle","frueh":"alle","rampe":"Rampe","notes":"","red":false,"lat":50.8166,"lng":7.1555,"tour":"Sieg Tour"},{"id":"73126","name":"Getränkesupermarkt Lehmann e.K.","city":"Troisdorf","cluster":"rechts","address":"Mendener Str. 21, Troisdorf, Deutschland","rheinseite":"rechts","tags":"alle","frueh":"alle","rampe":"ohne Rampe","notes":"","red":false,"lat":50.8166,"lng":7.1555,"tour":"Sieg Tour"},{"id":"73273","name":"Hans-Jürgen Hecken","city":"Windhagen","cluster":"rechts | 48er","address":"Vierwindener Str. 13, Windhagen, Deutschland","rheinseite":"rechts","tags":"48er","frueh":"48er","rampe":"ohne Rampe","notes":"","red":false,"lat":50.633,"lng":7.35,"tour":"Sieg Tour"},{"id":"70380","name":"Steffen Osterkamp e.K.","city":"Bad Marienberg","cluster":"rechts","address":"Marienberger Str. 26a, Bad Marienberg, Deutschland","rheinseite":"rechts","tags":"alle","frueh":"alle","rampe":"Rampe","notes":"","red":false,"lat":null,"lng":null,"tour":"Westerwald Tour"},{"id":"73807","name":"Armin Geschull","city":"Breitscheid","cluster":"rechts | 48er","address":"Marienstr. 1, Breitscheid, Deutschland","rheinseite":"rechts","tags":"48er","frueh":"48er","rampe":"ohne Rampe","notes":"","red":false,"lat":null,"lng":null,"tour":"Westerwald Tour"},{"id":"70544","name":"Inklusa gGmbH CAP-Markt Hillscheid","city":"Hillscheid","cluster":"rechts","address":"Bahnhofstr. 40-42, Hillscheid, Deutschland","rheinseite":"rechts","tags":"alle","frueh":"alle","rampe":"ohne Rampe","notes":"","red":false,"lat":null,"lng":null,"tour":"Westerwald Tour"},{"id":"71154","name":"Marleen Steinebach e.K.","city":"Höhn","cluster":"rechts","address":"Am Gewerbepark 3-5, Höhn, Deutschland","rheinseite":"rechts","tags":"alle","frueh":"alle","rampe":"Rampe","notes":"","red":false,"lat":50.616,"lng":7.983,"tour":"Westerwald Tour"},{"id":"70601","name":"Stefan Hoffmann e.K.","city":"Horhausen","cluster":"rechts","address":"Landblum 1, Horhausen, Deutschland","rheinseite":"rechts","tags":"alle","frueh":"alle","rampe":"Rampe","notes":"","red":false,"lat":50.583,"lng":7.533,"tour":"Westerwald Tour"},{"id":"70800","name":"Caritas-Werkstätten","city":"Hundsangen","cluster":"rechts","address":"Hauptstr. 49, Hundsangen, Deutschland","rheinseite":"rechts","tags":"alle","frueh":"alle","rampe":"Rampe","notes":"","red":false,"lat":50.45,"lng":7.983,"tour":"Westerwald Tour"},{"id":"73311","name":"Fett Frischecenter KG","city":"Linz am Rhein","cluster":"rechts","address":"Asbacherstr. 4, Linz am Rhein, Deutschland","rheinseite":"rechts","tags":"alle","frueh":"alle","rampe":"Rampe","notes":"","red":false,"lat":50.568,"lng":7.285,"tour":"Ahr Tour"},{"id":"71028","name":"Fuhrmann Lebensmittelmarkt KG","city":"Montabaur","cluster":"rechts","address":"Stauffenbergallee 1, Montabaur, Deutschland","rheinseite":"rechts","tags":"alle","frueh":"alle","rampe":"Rampe","notes":"","red":false,"lat":50.437,"lng":7.826,"tour":"Westerwald Tour"},{"id":"73141","name":"Getränkesupermarkt D. Röcher e.K.","city":"Montabaur","cluster":"rechts","address":"Allmannshausen 10a, Montabaur, Deutschland","rheinseite":"rechts","tags":"alle","frueh":"alle","rampe":"ohne Rampe","notes":"","red":false,"lat":50.437,"lng":7.826,"tour":"Westerwald Tour"},{"id":"73559","name":"Wagner Margret Inh. Bianca Wagner","city":"Nauort","cluster":"rechts | 54er","address":"Hauptstr. 28, Nauort, Deutschland","rheinseite":"rechts","tags":"54er","frueh":"54er","rampe":"ohne Rampe","notes":"","red":false,"lat":50.45,"lng":7.65,"tour":"Westerwald Tour"},{"id":"70451","name":"Lebensmittelmarkt","city":"Neuwied","cluster":"rechts","address":"Am Königsgericht 1, Neuwied, Deutschland","rheinseite":"rechts","tags":"alle","frueh":"alle","rampe":"ohne Rampe","notes":"","red":false,"lat":50.428,"lng":7.46,"tour":"Koblenz Tour"},{"id":"71891","name":"Alexander Kreuzberg e.K.","city":"Neuwied","cluster":"rechts","address":"Breslauerstr. 63, Neuwied, Deutschland","rheinseite":"rechts","tags":"alle","frueh":"alle","rampe":"Rampe","notes":"","red":false,"lat":50.428,"lng":7.46,"tour":"Koblenz Tour"},{"id":"72875","name":"Getränkesupermarkt Francki e.K.","city":"Neuwied","cluster":"rechts","address":"Allensteiner Str. 22a, Neuwied, Deutschland","rheinseite":"rechts","tags":"alle","frueh":"alle","rampe":"ohne Rampe","notes":"","red":false,"lat":50.428,"lng":7.46,"tour":"Koblenz Tour"},{"id":"71378","name":"Karl Heinz Fellenzer e.K.","city":"Puderbach","cluster":"rechts","address":"Urbacher Str. 35, Puderbach, Deutschland","rheinseite":"rechts","tags":"alle","frueh":"alle","rampe":"Rampe","notes":"","red":false,"lat":50.597,"lng":7.617,"tour":"Westerwald Tour"},{"id":"71410","name":"K.-H. Fellenzer Frischecenter KG","city":"Ransbach-Baumbach","cluster":"rechts","address":"Pleurtuit Str. 8, Ransbach-Baumbach, Deutschland","rheinseite":"rechts","tags":"alle","frueh":"alle","rampe":"Rampe","notes":"","red":false,"lat":50.465,"lng":7.725,"tour":"Westerwald Tour"},{"id":"70567","name":"Heinrich-Haus GmbH","city":"St. Katharinen","cluster":"rechts | 48er","address":"Linzer Str. 90, St. Katharinen, Deutschland","rheinseite":"rechts","tags":"48er","frueh":"48er","rampe":"Rampe","notes":"","red":false,"lat":50.583,"lng":7.35,"tour":"Westerwald Tour"},{"id":"70440","name":"Edeka Aktiv Markt Maik Jakobs","city":"Weyerbusch","cluster":"rechts","address":"Kölner Str. 25, Weyerbusch, Deutschland","rheinseite":"rechts","tags":"alle","frueh":"alle","rampe":"ohne Rampe","notes":"","red":false,"lat":50.716,"lng":7.583,"tour":"Westerwald Tour"},{"id":"70538","name":"Gerald Gans e.K.","city":"Köln","cluster":"rechts | 48er","address":"Ostheimer Str. 42, Köln, Deutschland","rheinseite":"rechts","tags":"48er","frueh":"48er","rampe":"ohne Rampe","notes":"","red":false,"lat":50.9375,"lng":6.9603,"tour":"Köln Tour"},{"id":"70570","name":"Gebrüder Hein GmbH &amp; Co. KG","city":"Köln","cluster":"rechts | 48er","address":"Gilgaustr. 29, Köln, Deutschland","rheinseite":"rechts","tags":"48er","frueh":"48er","rampe":"ohne Rampe","notes":"","red":false,"lat":50.9375,"lng":6.9603,"tour":"Köln Tour"},{"id":"70571","name":"Hein TS GmbH","city":"Köln","cluster":"rechts | 48er","address":"Houdainer Str. 2, Köln, Deutschland","rheinseite":"rechts","tags":"48er","frueh":"48er","rampe":"ohne Rampe","notes":"","red":false,"lat":50.9375,"lng":6.9603,"tour":"Köln Tour"},{"id":"70572","name":"Hein TS zweite GmbH","city":"Köln","cluster":"rechts","address":"St.-Sebastianus-Str. 14, Köln, Deutschland","rheinseite":"rechts","tags":"alle","frueh":"alle","rampe":"Rampe","notes":"","red":false,"lat":50.9375,"lng":6.9603,"tour":"Köln Tour"},{"id":"70573","name":"Gebrüder Hein GmbH &amp; Co. KG","city":"Köln","cluster":"rechts | 48er","address":"Gilgaustr. 24, Köln, Deutschland","rheinseite":"rechts","tags":"48er","frueh":"48er","rampe":"ohne Rampe","notes":"","red":false,"lat":50.9375,"lng":6.9603,"tour":"Köln Tour"},{"id":"71003","name":"Sylvia Nickel e.K.","city":"Köln","cluster":"rechts | 30er","address":"Bochumer Str. 2, Köln, Deutschland","rheinseite":"rechts","tags":"30er","frueh":"30er","rampe":"ohne Rampe","notes":"","red":true,"lat":50.9375,"lng":6.9603,"tour":"Köln Tour"},{"id":"71447","name":"Handelshof Köln Stiftung &amp; Co. KG","city":"Köln","cluster":"rechts","address":"Rolshover Str. 229-231, Köln, Deutschland","rheinseite":"rechts","tags":"alle","frueh":"alle","rampe":"Rampe","notes":"","red":false,"lat":50.9375,"lng":6.9603,"tour":"Köln Tour"},{"id":"71448","name":"Handelshof Köln Stiftung &amp; Co. KG","city":"Köln","cluster":"rechts","address":"Rolshover Str. 229-231, Köln, Deutschland","rheinseite":"rechts","tags":"alle","frueh":"alle","rampe":"Rampe","notes":"","red":false,"lat":50.9375,"lng":6.9603,"tour":"Köln Tour"},{"id":"73489","name":"Frischemarkt Thomas Weiden GmbH","city":"Köln","cluster":"rechts","address":"Berlinerstr. 823, Köln, Deutschland","rheinseite":"rechts","tags":"alle","frueh":"alle","rampe":"ohne Rampe","notes":"","red":false,"lat":50.9375,"lng":6.9603,"tour":"Köln Tour"},{"id":"73492","name":"S. Hemmersbach e.K.","city":"Köln","cluster":"rechts","address":"Olpenerstr. 397-401, Köln, Deutschland","rheinseite":"rechts","tags":"alle","frueh":"alle","rampe":"Rampe","notes":"","red":false,"lat":50.9375,"lng":6.9603,"tour":"Köln Tour"},{"id":"72908","name":"Getränkesupermarkt Esch e.K.","city":"Niederkassel","cluster":"rechts","address":"Porzer Straße 33, Niederkassel, Deutschland","rheinseite":"rechts","tags":"alle","frueh":"alle","rampe":"ohne Rampe","notes":"","red":false,"lat":50.815,"lng":7.033,"tour":"Sieg Tour"},{"id":"70135","name":"Johann Breidohr GmbH","city":"Bergisch Gladbach","cluster":"rechts","address":"De-Gasperi-Str. 1, Bergisch Gladbach, Deutschland","rheinseite":"rechts","tags":"alle","frueh":"alle","rampe":"ohne Rampe","notes":"","red":false,"lat":50.9918,"lng":7.1303,"tour":"Bergisch Gladbach Tour"},{"id":"70135-20","name":"Johann Breidohr GmbH","city":"Bergisch Gladbach","cluster":"rechts","address":"De-Gasperi-Str. 1, Bergisch Gladbach, Deutschland","rheinseite":"rechts","tags":"alle","frueh":"alle","rampe":"ohne Rampe","notes":"","red":false,"lat":50.9918,"lng":7.1303,"tour":"Bergisch Gladbach Tour"},{"id":"70264","name":"Mitten im Leben GmbH","city":"Bergisch Gladbach","cluster":"rechts | 48er","address":"Neue Nußbaumer Str. 2, Bergisch Gladbach, Deutschland","rheinseite":"rechts","tags":"48er","frueh":"48er","rampe":"ohne Rampe","notes":"","red":false,"lat":50.9918,"lng":7.1303,"tour":"Bergisch Gladbach Tour"},{"id":"70299","name":"Feldmann-Höner Warenvertriebs GmbH","city":"Bergisch Gladbach","cluster":"rechts | 48er","address":"Kölner Str. 104, Bergisch Gladbach, Deutschland","rheinseite":"rechts","tags":"48er","frueh":"48er","rampe":"Rampe","notes":"","red":false,"lat":50.9918,"lng":7.1303,"tour":"Bergisch Gladbach Tour"},{"id":"70299-50","name":"Feldmann-Höner Warenvertriebs GmbH","city":"Bergisch Gladbach","cluster":"rechts | 48er","address":"Kölner Str. 104, Bergisch Gladbach, Deutschland","rheinseite":"rechts","tags":"48er","frueh":"48er","rampe":"Rampe","notes":"","red":false,"lat":50.9918,"lng":7.1303,"tour":"Bergisch Gladbach Tour"},{"id":"70582","name":"Markus Hetzenegger","city":"Bergisch Gladbach","cluster":"rechts","address":"Herkenrather Str. 70, Bergisch Gladbach, Deutschland","rheinseite":"rechts","tags":"alle","frueh":"alle","rampe":"ohne Rampe","notes":"","red":false,"lat":50.9918,"lng":7.1303,"tour":"Bergisch Gladbach Tour"},{"id":"70627","name":"Markus Hetzenegger KG","city":"Bergisch Gladbach","cluster":"rechts | 48er","address":"Straßen 51-55, Bergisch Gladbach, Deutschland","rheinseite":"rechts","tags":"48er","frueh":"48er","rampe":"ohne Rampe","notes":"","red":false,"lat":50.9918,"lng":7.1303,"tour":"Bergisch Gladbach Tour"},{"id":"70942","name":"Markus Hetzenegger KG","city":"Bergisch Gladbach","cluster":"rechts | 30er","address":"Moitzfeld 72, Bergisch Gladbach, Deutschland","rheinseite":"rechts","tags":"30er","frueh":"30er","rampe":"ohne Rampe","notes":"","red":true,"lat":50.9918,"lng":7.1303,"tour":"Bergisch Gladbach Tour"},{"id":"71129","name":"Frischemarkt Thomas Weiden e.K.","city":"Bergisch Gladbach","cluster":"rechts | 48er","address":"Altenberger-Dom-Str. 126, Bergisch Gladbach, Deutschland","rheinseite":"rechts","tags":"48er","frueh":"48er","rampe":"ohne Rampe","notes":"","red":false,"lat":50.9918,"lng":7.1303,"tour":"Bergisch Gladbach Tour"},{"id":"70661","name":"Andreas Wirths KG","city":"Bergneustadt","cluster":"rechts","address":"Kölnstr. 113, Bergneustadt, Deutschland","rheinseite":"rechts","tags":"alle","frueh":"alle","rampe":"Rampe","notes":"","red":false,"lat":51.027,"lng":7.656,"tour":"Bergisches Land Tour"},{"id":"71775","name":"Lebensmittelmarkt","city":"Gummersbach","cluster":"rechts","address":"Dümlinghauser Str. 43, Gummersbach, Deutschland","rheinseite":"rechts","tags":"alle","frueh":"alle","rampe":"Rampe","notes":"","red":false,"lat":51.026,"lng":7.564,"tour":"Bergisches Land Tour"},{"id":"70181","name":"Breidohr Handels GmbH","city":"Hilden","cluster":"rechts","address":"Walder Str. 99, Hilden, Deutschland","rheinseite":"rechts","tags":"alle","frueh":"alle","rampe":"ohne Rampe","notes":"","red":false,"lat":51.168,"lng":6.93,"tour":"Solingen Tour"},{"id":"70181-20","name":"Breidohr Handels GmbH","city":"Hilden","cluster":"rechts","address":"Walder Str. 99, Hilden, Deutschland","rheinseite":"rechts","tags":"alle","frueh":"alle","rampe":"ohne Rampe","notes":"","red":false,"lat":51.168,"lng":6.93,"tour":"Solingen Tour"},{"id":"73335","name":"Kuhland GmbH","city":"Hilden","cluster":"rechts | 48er","address":"Lortzingstr. 39, Hilden, Deutschland","rheinseite":"rechts","tags":"48er","frueh":"alle","rampe":"Rampe","notes":"","red":false,"lat":51.168,"lng":6.93,"tour":"Solingen Tour"},{"id":"72299","name":"Marcus Byhahn e.K.","city":"Hückeswagen","cluster":"rechts","address":"Wiehagenerstr. 65, Hückeswagen, Deutschland","rheinseite":"rechts","tags":"alle","frueh":"alle","rampe":"Rampe","notes":"keine Spediteure!!! Seitenblech","red":true,"lat":51.15,"lng":7.345,"tour":"Bergisches Land Tour"},{"id":"70974","name":"Hetzenegger Dürscheid GmbH &amp; Co. KG","city":"Kürten-Dürscheid","cluster":"rechts","address":"Wipperfürther Str. 165, Kürten-Dürscheid, Deutschland","rheinseite":"rechts","tags":"alle","frueh":"alle","rampe":"Rampe","notes":"","red":false,"lat":51.05,"lng":7.266,"tour":"Bergisches Land Tour"},{"id":"72157","name":"Heinz Hövener e.K.","city":"Langenfeld","cluster":"rechts | 48er","address":"Kaiserstr. 20, Langenfeld, Deutschland","rheinseite":"rechts","tags":"48er","frueh":"54er","rampe":"ohne Rampe","notes":"","red":false,"lat":51.108,"lng":6.949,"tour":"Solingen Tour"},{"id":"72158","name":"Heinz Hövener e.K.","city":"Langenfeld","cluster":"rechts","address":"Schneiderstr. 17, Langenfeld, Deutschland","rheinseite":"rechts","tags":"alle","frueh":"alle","rampe":"ohne Rampe","notes":"","red":false,"lat":51.108,"lng":6.949,"tour":"Solingen Tour"},{"id":"72787","name":"Getränkesupermarkt Luck e.K.","city":"Langenfeld","cluster":"rechts","address":"Schneiderstr. 13, Langenfeld, Deutschland","rheinseite":"rechts","tags":"alle","frueh":"alle","rampe":"ohne Rampe","notes":"","red":false,"lat":51.108,"lng":6.949,"tour":"Solingen Tour"},{"id":"70227","name":"Bonus LEH OHG","city":"Leichlingen","cluster":"rechts","address":"Solinger Str. 7, Leichlingen, Deutschland","rheinseite":"rechts","tags":"alle","frueh":"alle","rampe":"ohne Rampe","notes":"","red":false,"lat":51.106,"lng":7.018,"tour":"Solingen Tour"},{"id":"71701","name":"LEH BONUS OHG","city":"Leichlingen","cluster":"rechts","address":"Reusrather 1, Leichlingen, Deutschland","rheinseite":"rechts","tags":"alle","frueh":"alle","rampe":"Rampe","notes":"","red":false,"lat":51.106,"lng":7.018,"tour":"Solingen Tour"},{"id":"72760","name":"Getränkesupermarkt Elke Luck e.K.","city":"Leichlingen","cluster":"rechts","address":"Moltkestr. 25, Leichlingen, Deutschland","rheinseite":"rechts","tags":"alle","frueh":"alle","rampe":"ohne Rampe","notes":"","red":false,"lat":51.106,"lng":7.018,"tour":"Solingen Tour"},{"id":"71957","name":"Fischer &amp; Nieder GmbH","city":"Leverkusen","cluster":"rechts","address":"Münsters Gässchen 3-9, Leverkusen, Deutschland","rheinseite":"rechts","tags":"alle","frueh":"alle","rampe":"Rampe","notes":"","red":false,"lat":51.0459,"lng":6.9843,"tour":"Leverkusen Tour"},{"id":"72081","name":"EDEKA Einzelhandelsg. RR mbH","city":"Leverkusen","cluster":"rechts","address":"Pommernstr. 4-6, Leverkusen, Deutschland","rheinseite":"rechts","tags":"alle","frueh":"alle","rampe":"ohne Rampe","notes":"","red":false,"lat":51.0459,"lng":6.9843,"tour":"Leverkusen Tour"},{"id":"72230","name":"Dietmar Kern e.K.","city":"Leverkusen","cluster":"rechts","address":"Berliner Str. 2-4, Leverkusen, Deutschland","rheinseite":"rechts","tags":"alle","frueh":"alle","rampe":"ohne Rampe","notes":"","red":false,"lat":51.0459,"lng":6.9843,"tour":"Leverkusen Tour"},{"id":"72883","name":"Getränke Breidenbach e.K.","city":"Leverkusen","cluster":"rechts","address":"Adolf Kaschny Str. 1-5, Leverkusen, Deutschland","rheinseite":"rechts","tags":"alle","frueh":"alle","rampe":"ohne Rampe","notes":"","red":false,"lat":51.0459,"lng":6.9843,"tour":"Leverkusen Tour"},{"id":"73502","name":"Matthias Schmitz e.K.","city":"Leverkusen","cluster":"rechts","address":"Theodor-Adorno-Str. 1, Leverkusen, Deutschland","rheinseite":"rechts","tags":"alle","frueh":"alle","rampe":"ohne Rampe","notes":"","red":false,"lat":51.0459,"lng":6.9843,"tour":"Leverkusen Tour"},{"id":"71491","name":"Teske Lebensmittelhandels KG","city":"Leverkusen-Hitdorf","cluster":"rechts | 30er","address":"Hitdorfer Str. 197, Leverkusen-Hitdorf, Deutschland","rheinseite":"rechts","tags":"30er","frueh":"30er","rampe":"ohne Rampe","notes":"","red":true,"lat":51.0459,"lng":6.9843,"tour":"Leverkusen Tour"},{"id":"73956","name":"Schallenberg","city":"Leverkusen-Rheindorf","cluster":"rechts | 30er","address":"Wupperstr. 8, Leverkusen-Rheindorf, Deutschland","rheinseite":"rechts","tags":"30er","frueh":"30er","rampe":"Rampe","notes":"","red":true,"lat":51.0459,"lng":6.9843,"tour":"Leverkusen Tour"},{"id":"73032","name":"Birgit Braun","city":"Lindlar","cluster":"rechts | 48er","address":"Lindlarer Str. 40, Lindlar, Deutschland","rheinseite":"rechts","tags":"48er","frueh":"48er","rampe":"ohne Rampe","notes":"","red":false,"lat":51.019,"lng":7.378,"tour":"Bergisches Land Tour"},{"id":"73541","name":"Stöcker e.K.","city":"Lindlar","cluster":"rechts | 30er","address":"Kölner Str. 7, Lindlar, Deutschland","rheinseite":"rechts","tags":"30er","frueh":"alle","rampe":"ohne Rampe","notes":"Tagsüber Solo, Parkplatz!!!","red":true,"lat":51.019,"lng":7.378,"tour":"Bergisches Land Tour"},{"id":"73165","name":"Anne Felbecker Frischemarkt e.K.","city":"Overath","cluster":"rechts","address":"Pilgerstr. 69, Overath, Deutschland","rheinseite":"rechts","tags":"alle","frueh":"alle","rampe":"ohne Rampe","notes":"","red":false,"lat":50.932,"lng":7.284,"tour":"Bergisch Gladbach Tour"},{"id":"73165-b","name":"Anne Felbecker Frischemarkt e.K.","city":"Overath","cluster":"rechts","address":"Pilgerstr. 69, Overath, Deutschland","rheinseite":"rechts","tags":"alle","frueh":"alle","rampe":"ohne Rampe","notes":"","red":false,"lat":50.932,"lng":7.284,"tour":"Bergisch Gladbach Tour"},{"id":"72300","name":"Thomas Byhahn e.K.","city":"Radevormwald","cluster":"rechts","address":"Elberfelderstr. 94, Radevormwald, Deutschland","rheinseite":"rechts","tags":"alle","frueh":"alle","rampe":"Rampe","notes":"","red":false,"lat":51.203,"lng":7.356,"tour":"Bergisches Land Tour"},{"id":"73057","name":"Alexandra Osterland-Tacke e.K.","city":"Radevormwald","cluster":"rechts","address":"Dahlienstraße 36, Radevormwald, Deutschland","rheinseite":"rechts","tags":"alle","frueh":"alle","rampe":"ohne Rampe","notes":"","red":false,"lat":51.203,"lng":7.356,"tour":"Bergisches Land Tour"},{"id":"70407","name":"Hubert Dick GmbH &amp; Co. KG","city":"Reichshof","cluster":"rechts","address":"Hauptstr. 26-28, Reichshof, Deutschland","rheinseite":"rechts","tags":"alle","frueh":"alle","rampe":"ohne Rampe","notes":"","red":false,"lat":50.95,"lng":7.7,"tour":"Bergisches Land Tour"},{"id":"70301","name":"Breidohr&#x27;s Frische-Center","city":"Rösrath","cluster":"rechts","address":"Hans-Böckler-Str. 1-3, Rösrath, Deutschland","rheinseite":"rechts","tags":"alle","frueh":"alle","rampe":"Rampe","notes":"","red":false,"lat":50.9,"lng":7.183,"tour":"Bergisch Gladbach Tour"},{"id":"70301-20","name":"Breidohr&#x27;s Frische-Center","city":"Rösrath","cluster":"rechts","address":"Hans-Böckler-Str. 1-3, Rösrath, Deutschland","rheinseite":"rechts","tags":"alle","frueh":"alle","rampe":"ohne Rampe","notes":"","red":false,"lat":50.9,"lng":7.183,"tour":"Bergisch Gladbach Tour"},{"id":"72302","name":"Breidohr Frische-Markt Rösrath GmbH","city":"Rösrath","cluster":"rechts","address":"Hauptstr. 102, Rösrath, Deutschland","rheinseite":"rechts","tags":"alle","frueh":"alle","rampe":"Rampe","notes":"","red":false,"lat":50.9,"lng":7.183,"tour":"Bergisch Gladbach Tour"},{"id":"72302-30","name":"Breidohr Frische-Markt Rösrath GmbH","city":"Rösrath","cluster":"rechts","address":"Hauptstr. 102, Rösrath, Deutschland","rheinseite":"rechts","tags":"alle","frueh":"alle","rampe":"Rampe","notes":"","red":false,"lat":50.9,"lng":7.183,"tour":"Bergisch Gladbach Tour"},{"id":"71659","name":"Lebensmittelmärkte Pauli OHG","city":"Solingen","cluster":"rechts","address":"Kölnerstr. 99, Solingen, Deutschland","rheinseite":"rechts","tags":"alle","frueh":"alle","rampe":"Rampe","notes":"","red":false,"lat":51.165,"lng":7.084,"tour":"Solingen Tour"},{"id":"72073","name":"EDEKA Einzelhandelsg. RR mbH","city":"Solingen","cluster":"rechts","address":"Focherstraße 31, Solingen, Deutschland","rheinseite":"rechts","tags":"alle","frueh":"alle","rampe":"Rampe","notes":"","red":false,"lat":51.165,"lng":7.084,"tour":"Solingen Tour"},{"id":"72141","name":"Wodarz OHG","city":"Solingen","cluster":"rechts","address":"Friedrich-Ebert-Str. 95, Solingen, Deutschland","rheinseite":"rechts","tags":"alle","frueh":"alle","rampe":"ohne Rampe","notes":"","red":false,"lat":51.165,"lng":7.084,"tour":"Solingen Tour"},{"id":"72141-20","name":"Wodarz OHG","city":"Solingen","cluster":"rechts","address":"Friedrich-Ebert-Str. 95, Solingen, Deutschland","rheinseite":"rechts","tags":"alle","frueh":"alle","rampe":"ohne Rampe","notes":"","red":false,"lat":51.165,"lng":7.084,"tour":"Solingen Tour"},{"id":"73494","name":"A. Spalek e.K.","city":"Solingen","cluster":"rechts","address":"Kronprinzenstr. 125a, Solingen, Deutschland","rheinseite":"rechts","tags":"alle","frueh":"alle","rampe":"Rampe","notes":"","red":false,"lat":51.165,"lng":7.084,"tour":"Solingen Tour"},{"id":"72171","name":"Rolf Harbring","city":"Wermelskirchen","cluster":"rechts","address":"Im Belten 2, Wermelskirchen, Deutschland","rheinseite":"rechts","tags":"alle","frueh":"alle","rampe":"ohne Rampe","notes":"","red":false,"lat":51.139,"lng":7.215,"tour":"Bergisches Land Tour"},{"id":"72779","name":"Getränkesupermarkt J. Cwieczek e.K.","city":"Wermelskirchen","cluster":"rechts","address":"Albert-Einstein-Str. 9a, Wermelskirchen, Deutschland","rheinseite":"rechts","tags":"alle","frueh":"alle","rampe":"ohne Rampe","notes":"","red":false,"lat":51.139,"lng":7.215,"tour":"Bergisches Land Tour"},{"id":"73417","name":"Frischemarkt Offermann","city":"Wermelskirchen","cluster":"rechts","address":"Südstr. 6, Wermelskirchen, Deutschland","rheinseite":"rechts","tags":"alle","frueh":"alle","rampe":"Rampe","notes":"Rampe ja, nur mit Bühne!!!","red":true,"lat":51.139,"lng":7.215,"tour":"Bergisches Land Tour"},{"id":"73414","name":"Frischemarkt Offermann","city":"Wipperfürth","cluster":"rechts | 48er","address":"Westfalenstr. 17, Wipperfürth, Deutschland","rheinseite":"rechts","tags":"48er","frueh":"48er","rampe":"ohne Rampe","notes":"","red":false,"lat":51.116,"lng":7.479,"tour":"Bergisches Land Tour"},{"id":"73414-20","name":"Frischemarkt Offermann","city":"Wipperfürth","cluster":"rechts | 48er","address":"Westfalenstr. 17, Wipperfürth, Deutschland","rheinseite":"rechts","tags":"48er","frueh":"48er","rampe":"ohne Rampe","notes":"","red":false,"lat":51.116,"lng":7.479,"tour":"Bergisches Land Tour"},{"id":"73416","name":"Frischemarkt Offermann","city":"Wipperfürth","cluster":"rechts | 48er","address":"Hindenburgstr. 2, Wipperfürth, Deutschland","rheinseite":"rechts","tags":"48er","frueh":"48er","rampe":"ohne Rampe","notes":"","red":false,"lat":51.116,"lng":7.479,"tour":"Bergisches Land Tour"}];
+
+
+function showSegmentOverview() {
+  const groups = {};
+  customers.forEach(c => {
+    const key = c.cluster || 'Ohne';
+    if (!groups[key]) groups[key] = [];
+    groups[key].push(c);
+  });
+  let html = '<h4>Alle Segmente:</h4>';
+  Object.keys(groups).sort().forEach(k => {
+    html += `<div><strong>${k}</strong>: ${groups[k].length} Kunden</div>`;
+  });
+  document.getElementById('segment-overview').innerHTML = html;
+}
+
+function startSegmentQuiz() {
+  if (customers.length < 4) return;
+  const c = customers[Math.floor(Math.random() * customers.length)];
+  const correct = c.cluster || 'Ohne';
+  const allClusters = [...new Set(customers.map(x => x.cluster || 'Ohne'))];
+  const options = [correct];
+  while (options.length < 4 && options.length < allClusters.length) {
+    const r = allClusters[Math.floor(Math.random() * allClusters.length)];
+    if (!options.includes(r)) options.push(r);
+  }
+  options.sort(() => Math.random() - 0.5);
+  let html = `<div class="card"><div class="big">${c.id}</div><p>Welches Segment / Cluster?</p><div class="btns">`;
+  options.forEach(opt => {
+    html += `<button onclick="checkSegment('${opt}', '${correct}', '${c.id}')">${opt}</button>`;
+  });
+  html += '</div><div id="seg-feedback"></div></div>';
+  document.getElementById('segment-quiz').innerHTML = html;
+}
+
+function checkSegment(chosen, correct, id) {
+  const fb = document.getElementById('seg-feedback');
+  if (chosen === correct) {
+    fb.innerHTML = '<span style="color:var(--ok)">✓ Richtig!</span>';
+  } else {
+    fb.innerHTML = `<span style="color:var(--red)">✗ Richtig: ${correct}</span>`;
+  }
+  setTimeout(startSegmentQuiz, 1200);
+}
+
+
+
+document.getElementById('global-search').oninput = function() {
+  const q = this.value.trim().toLowerCase();
+  const container = document.getElementById('global-results');
+  if (!q) { container.style.display = 'none'; container.innerHTML = ''; return; }
+  const matches = customers.filter(c => 
+    c.id.toLowerCase().includes(q) || 
+    (c.name||'').toLowerCase().includes(q) || 
+    c.city.toLowerCase().includes(q)
+  ).slice(0, 20);
+  if (!matches.length) {
+    container.innerHTML = '<div class="card">Keine Treffer</div>';
+    container.style.display = 'block';
+    return;
+  }
+  let html = '<div class="card"><h4>Suchergebnisse (' + matches.length + ')</h4>';
+  matches.forEach(c => {
+    html += `<div style="padding:.6rem 0;border-bottom:1px solid #334155;">
+      <strong style="font-size:1.2rem;color:var(--accent)">${c.id}</strong> – ${c.name||''}<br>
+      <span style="color:var(--muted)">${c.city} | ${c.cluster||''} | Tags: ${c.tags||''}</span>
+      ${c.notes ? '<br><small style="color:var(--warn)">'+c.notes+'</small>' : ''}
+      <div style="margin-top:.3rem;">
+        <a href="${googleUrl(c)}" target="_blank" class="btn google-btn" style="font-size:.8rem;padding:.3rem .6rem;">Google Maps</a>
+        <button class="btn-secondary" style="font-size:.8rem;padding:.3rem .6rem;margin-left:.5rem;" onclick="document.querySelector('[data-mode=verwalten]').click(); editCustomer(${customers.indexOf(c)})">Edit</button>
+      </div>
+    </div>`;
+  });
+  html += '</div>';
+  container.innerHTML = html;
+  container.style.display = 'block';
+};
+
+
+function startCityQuiz() {
+  if (customers.length < 4) return;
+  const c = customers[Math.floor(Math.random() * customers.length)];
+  const correct = c.city;
+  const cities = [...new Set(customers.map(x => x.city))];
+  const options = [correct];
+  while (options.length < 4 && options.length < cities.length) {
+    const r = cities[Math.floor(Math.random() * cities.length)];
+    if (!options.includes(r)) options.push(r);
+  }
+  options.sort(() => Math.random() - 0.5);
+  let html = `<div class="card"><div class="big">${c.id}</div><p>${c.name||''}</p><p>Welche Stadt?</p><div class="btns">`;
+  options.forEach(opt => {
+    html += `<button onclick="checkCity('${opt}', '${correct}')">${opt}</button>`;
+  });
+  html += '</div><div id="city-fb"></div></div>';
+  document.getElementById('city-learn-area').innerHTML = html;
+}
+function checkCity(chosen, correct) {
+  const fb = document.getElementById('city-fb');
+  fb.innerHTML = chosen === correct ? '<span style="color:var(--ok)">✓ Richtig!</span>' : `<span style="color:var(--red)">✗ Richtig: ${correct}</span>`;
+  setTimeout(startCityQuiz, 1200);
+}
+function showCityFlash() {
+  const c = customers[Math.floor(Math.random() * customers.length)];
+  document.getElementById('city-learn-area').innerHTML = `
+    <div class="card">
+      <div class="big">${c.city}</div>
+      <p>Kunden in dieser Stadt:</p>
+      <div id="city-customers"></div>
+      <button onclick="showCityFlash()">Nächste Stadt</button>
+    </div>`;
+  const list = customers.filter(x => x.city === c.city).map(x => `<div>${x.id} – ${x.name||''} <a href="${googleUrl(x)}" target="_blank">Maps</a></div>`).join('');
+  document.getElementById('city-customers').innerHTML = list;
+}
+
+
+function showAreaCards() {
+  const areas = [...new Set(customers.map(c => c.cluster || 'Ohne'))];
+  let html = '<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(220px,1fr));gap:1rem;">';
+  areas.forEach(area => {
+    const count = customers.filter(c => (c.cluster||'Ohne') === area).length;
+    const color = area.includes('30er') ? '#ef4444' : area.includes('48er') ? '#f59e0b' : '#3b82f6';
+    html += `<div class="card" style="border-top:4px solid ${color};cursor:pointer;" onclick="filterByArea('${area}')">
+      <div style="font-size:1.4rem;font-weight:700;">${area}</div>
+      <div style="color:var(--muted);margin-top:.5rem;">${count} Kunden</div>
+    </div>`;
+  });
+  html += '</div>';
+  document.getElementById('area-learn-area').innerHTML = html;
+}
+function filterByArea(area) {
+  const list = customers.filter(c => (c.cluster||'Ohne') === area);
+  let html = `<h3>${area} (${list.length})</h3>`;
+  list.slice(0,30).forEach(c => {
+    html += `<div style="padding:.5rem 0;border-bottom:1px solid #334155;">
+      <strong>${c.id}</strong> – ${c.name||''} – ${c.city}
+      <a href="${googleUrl(c)}" target="_blank" style="margin-left:.5rem;color:#93c5fd;">Maps</a>
+    </div>`;
+  });
+  if (list.length > 30) html += '<p>... und mehr</p>';
+  document.getElementById('area-learn-area').innerHTML = html + '<button onclick="showAreaCards()" style="margin-top:1rem;">Zurück</button>';
+}
+
+function startAreaQuiz() {
+  if (customers.length < 4) return;
+  const c = customers[Math.floor(Math.random() * customers.length)];
+  const correct = c.cluster || 'Ohne';
+  const areas = [...new Set(customers.map(x => x.cluster || 'Ohne'))];
+  const options = [correct];
+  while (options.length < 4 && options.length < areas.length) {
+    const r = areas[Math.floor(Math.random() * areas.length)];
+    if (!options.includes(r)) options.push(r);
+  }
+  options.sort(() => Math.random() - 0.5);
+  let html = `<div class="card"><div class="big">${c.id}</div><p>${c.name||''} – ${c.city}</p><p>Welches Gebiet / Segment?</p><div class="btns">`;
+  options.forEach(opt => {
+    html += `<button onclick="checkArea('${opt}', '${correct}')">${opt}</button>`;
+  });
+  html += '</div><div id="area-fb"></div></div>';
+  document.getElementById('area-learn-area').innerHTML = html;
+}
+function checkArea(chosen, correct) {
+  const fb = document.getElementById('area-fb');
+  fb.innerHTML = chosen === correct ? '<span style="color:var(--ok)">✓ Richtig!</span>' : `<span style="color:var(--red)">✗ Richtig: ${correct}</span>`;
+  setTimeout(startAreaQuiz, 1200);
+}
+function showAreaOverview() {
+  const groups = {};
+  customers.forEach(c => {
+    const key = c.rheinseite || 'unbekannt';
+    if (!groups[key]) groups[key] = {count:0, tags:{}};
+    groups[key].count++;
+    const t = c.tags || 'alle';
+    groups[key].tags[t] = (groups[key].tags[t]||0) + 1;
+  });
+  let html = '<h4>Gebiete Übersicht:</h4>';
+  Object.keys(groups).forEach(k => {
+    html += `<div><strong>${k}</strong>: ${groups[k].count} Kunden<br>`;
+    Object.keys(groups[k].tags).forEach(t => html += ` &nbsp; ${t}: ${groups[k].tags[t]}<br>`);
+    html += '</div>';
+  });
+  document.getElementById('area-learn-area').innerHTML = '<div class="card">' + html + '</div>';
+}
+
+
+function checkOffline() {
+  if (!navigator.onLine) {
+    const notice = document.createElement('div');
+    notice.style.cssText = 'position:fixed;top:0;left:0;right:0;background:#f59e0b;color:#000;text-align:center;padding:.5rem;z-index:9999;font-weight:600;';
+    notice.textContent = 'Offline-Modus – Lernen, Suche und Stammdaten funktionieren. Karte benötigt Internet.';
+    document.body.prepend(notice);
+  }
+}
+window.addEventListener('online', () => location.reload());
+window.addEventListener('offline', checkOffline);
+
+
+const PROGRESS_KEY = 'edeka_lern_fortschritt';
+let progress = JSON.parse(localStorage.getItem(PROGRESS_KEY) || '{"correct":0,"total":0,"tours":0}');
+function updateProgressDisplay() {
+  const pct = progress.total ? Math.round(progress.correct / progress.total * 100) : 0;
+  document.getElementById('progress-display').textContent = `Fortschritt: ${progress.correct}/${progress.total} (${pct}%)`;
+}
+function saveProgress() {
+  localStorage.setItem(PROGRESS_KEY, JSON.stringify(progress));
+  updateProgressDisplay();
+}
+// Hook into tour quiz
+const origCheckTour = window.checkTour;
+window.checkTour = function(chosen, correct) {
+  progress.total++;
+  if (chosen === correct) progress.correct++;
+  saveProgress();
+  if (origCheckTour) origCheckTour(chosen, correct);
+};
+
+loadData();
+updateProgressDisplay();
+checkOffline();
+showFlash();
+nextQuiz();
+renderTable();
+</script>
+</body>
+</html>
